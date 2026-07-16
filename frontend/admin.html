@@ -1,0 +1,2055 @@
+<!DOCTYPE html>
+<html lang="id">
+<head>
+    <meta charset="UTF-8">
+    <meta name="viewport" content="width=device-width, initial-scale=1.0">
+    <link rel="icon" type="image/png" href="logo/logo.png">
+    <title>Admin Panel - HRIS Attendance</title>
+    <script src="https://cdn.tailwindcss.com"></script>
+    <script src="https://unpkg.com/lucide@latest"></script>
+    <script src="https://cdn.jsdelivr.net/npm/chart.js"></script>
+    <!-- Leaflet CSS and JS for map functionality -->
+    <link rel="stylesheet" href="https://unpkg.com/leaflet@1.9.4/dist/leaflet.css" integrity="sha256-p4NxAoJBhIIN+hmNHrzRCf9tD/miZyoHS5obTRR9BMY=" crossorigin=""/>
+    <!-- Library untuk membuat file Excel (XLSX) -->
+    <script src="https://cdn.jsdelivr.net/npm/xlsx/dist/xlsx.full.min.js"></script>
+    <script src="https://unpkg.com/leaflet@1.9.4/dist/leaflet.js" integrity="sha256-20nQCchB9co0qIjJZRGuk2/Z9VM+kNiyxNV1lvTlZBo=" crossorigin=""></script>
+
+    <link rel="stylesheet" href="https://cdnjs.cloudflare.com/ajax/libs/font-awesome/6.0.0-beta3/css/all.min.css">
+    <link rel="stylesheet" href="css/admin-style.css">
+    <style>
+        /* Styles for the scrollable schedule table */
+        .schedule-table-container {
+            overflow-x: auto;
+            max-height: 70vh; /* Or any height you prefer */
+        }
+        #view-schedule table {
+            border-collapse: separate;
+            border-spacing: 0;
+        }
+        .sticky-col {
+            position: -webkit-sticky;
+            position: sticky;
+            left: 0;
+            z-index: 10;
+            background-color: white;
+            border-right: 1px solid #e2e8f0; /* slate-200 */
+        }
+        .first-col {
+            min-width: 150px;
+        }
+        .second-col {
+            left: 150px; /* Width of the first column */
+            min-width: 150px;
+        }
+        .third-col {
+            left: 300px; /* Width of first + second column */
+            min-width: 100px;
+        }
+        #schedule-table-header .sticky-col {
+            background-color: #f8fafc; /* slate-50 */
+            z-index: 20;
+        }
+        .day-col {
+            min-width: 60px; /* Adjust as needed */
+            text-align: center;
+        }
+        .schedule-cell {
+            transition: background-color 0.2s ease-in-out;
+        }
+        /* New style for edit mode */
+        .schedule-table-container.edit-mode-active .schedule-cell {
+            cursor: pointer;
+        }
+        .schedule-table-container.edit-mode-active .schedule-cell:hover {
+            background-color: #dbeafe; /* Tailwind's blue-100 */
+        }
+        .schedule-footer-label {
+            position: sticky;
+            left: 0;
+            min-width: 400px; /* 150 + 150 + 100 */
+            z-index: 10;
+            background: inherit;
+            border-right: 1px solid #e2e8f0;
+        }
+        .btn-copy-schedule {
+            display: none; /* Hidden by default */
+            vertical-align: middle;
+        }
+        .schedule-table-container.edit-mode-active .btn-copy-schedule {
+            display: inline-flex; /* Shown in edit mode */
+        }
+    </style>
+    <script>
+        // More secure gatekeeper for the company admin page
+        // 1. Get token and user data from localStorage
+        const accessToken = localStorage.getItem('accessToken');
+        const userString = localStorage.getItem('user');
+        const user = userString ? JSON.parse(userString) : null;
+
+        // 2. Perform validation
+        // Arahkan ke login jika:
+        // - Tidak ada token, ATAU
+        // - Tidak ada data user, ATAU
+        // - Role user BUKAN 'admin'
+        if (!accessToken || !user || user.role !== 'admin') {
+            localStorage.removeItem('accessToken'); // Bersihkan sisa data login yang tidak valid
+            localStorage.removeItem('user');
+            window.location.href = 'login.html'; // Clear invalid login data remnants
+        }
+    </script>
+</head>
+<body class="bg-slate-50 font-sans">
+
+    <div class="flex h-screen bg-slate-100">
+        <!-- Sidebar -->
+        <aside id="sidebar" class="fixed inset-y-0 left-0 z-40 w-64 bg-white border-r border-slate-200 flex flex-col transform -translate-x-full transition-transform duration-300 ease-in-out lg:relative lg:translate-x-0 lg:flex-shrink-0">
+            <div class="h-16 flex items-center justify-center px-4 border-b border-slate-200">
+                <div class="flex items-center space-x-2">
+                    <div id="company-logo-container" class="p-2 bg-blue-600 rounded-lg">
+                        <!-- Logo akan di-render oleh JS -->
+                    </div>
+                    <h1 id="company-name-header" class="text-sm font-bold text-slate-800 leading-tight">HRIS Admin</h1>
+                </div>
+            </div>
+            <nav class="flex-1 px-4 py-4 space-y-2">
+                <a href="#dashboard" id="nav-dashboard" class="nav-link flex items-center px-4 py-2.5 text-sm font-semibold text-white bg-blue-600 rounded-lg shadow-md">
+                    <i data-lucide="layout-dashboard" class="w-5 h-5 mr-3"></i>
+                    Dashboard
+                </a>
+                <a href="#employees" id="nav-employees" class="nav-link flex items-center px-4 py-2.5 text-sm font-medium text-slate-600 hover:bg-slate-100 rounded-lg">
+                    <i data-lucide="users" class="w-5 h-5 mr-3"></i>
+                    Employees
+                </a>
+                <a href="#attendance-log" id="nav-attendance-log" class="nav-link flex items-center px-4 py-2.5 text-sm font-medium text-slate-600 hover:bg-slate-100 rounded-lg">
+                    <i data-lucide="clipboard-list" class="w-5 h-5 mr-3"></i>
+                    Attendance Log
+                </a>
+                <a href="#schedule" id="nav-schedule" class="nav-link flex items-center px-4 py-2.5 text-sm font-medium text-slate-600 hover:bg-slate-100 rounded-lg">
+                    <i data-lucide="calendar-days" class="w-5 h-5 mr-3"></i>
+                    Schedule
+                </a>
+                <a href="#requests" id="nav-requests" class="nav-link flex items-center px-4 py-2.5 text-sm font-medium text-slate-600 hover:bg-slate-100 rounded-lg relative">
+                    <i data-lucide="mail-check" class="w-5 h-5 mr-3"></i>
+                    Requests
+                    <span id="requests-count-badge" class="absolute top-2 right-3 px-2 py-0.5 bg-orange-100 text-orange-600 text-[10px] font-bold rounded-full hidden">0</span>
+                </a>
+                <a href="#reports" id="nav-reports" class="nav-link flex items-center px-4 py-2.5 text-sm font-medium text-slate-600 hover:bg-slate-100 rounded-lg">
+                    <i data-lucide="file-bar-chart-2" class="w-5 h-5 mr-3"></i>
+                    Reports
+                </a>
+                <a href="#settings" id="nav-settings" class="nav-link flex items-center px-4 py-2.5 text-sm font-medium text-slate-600 hover:bg-slate-100 rounded-lg">
+                    <i data-lucide="settings" class="w-5 h-5 mr-3"></i>
+                    Settings
+                </a>
+            </nav>
+            <div class="p-4 border-t border-slate-200">
+                <div class="flex items-center">
+                    <div id="btn-profile-settings" class="flex items-center flex-1 cursor-pointer group min-w-0">
+                        <img id="sidebar-avatar" src="https://images.unsplash.com/photo-1580489944761-15a19d654956?auto=format&fit=crop&w=80&h=80&q=80" alt="Admin Avatar" class="w-10 h-10 rounded-full group-hover:ring-2 group-hover:ring-blue-500 transition-all">
+                        <div class="ml-3 overflow-hidden">
+                            <p id="sidebar-admin-name" class="text-sm font-semibold text-slate-800 truncate">Admin Name</p>
+                            <p id="sidebar-admin-role" class="text-xs text-slate-500">Admin Role</p>
+                        </div>
+                    </div>
+                    <button class="logout-button ml-auto p-2 rounded-md text-slate-400 hover:bg-slate-100">
+                        <i data-lucide="log-out" class="w-4 h-4"></i>
+                    </button>
+                </div>
+            </div>
+        </aside>
+
+        <!-- Sidebar Overlay for mobile -->
+        <div id="sidebar-overlay" class="fixed inset-0 bg-black bg-opacity-50 z-30 hidden lg:hidden"></div>
+
+        <!-- Main Content -->
+        <main class="flex-1 overflow-y-auto">
+            <!-- Mobile Header -->
+            <header class="sticky top-0 bg-slate-50/80 backdrop-blur-sm z-20 p-4 border-b border-slate-200 flex items-center justify-between lg:hidden">
+                <button id="hamburger-btn" class="p-2 rounded-md text-slate-600 hover:bg-slate-200">
+                    <i data-lucide="menu" class="w-6 h-6"></i>
+                </button>
+                <h1 id="mobile-page-title" class="text-lg font-bold text-slate-800">Dashboard</h1>
+                <div class="w-8"></div> <!-- Spacer -->
+            </header>
+
+            <!-- View: Dashboard -->
+            <div id="view-dashboard" class="p-8">
+                <!-- Header -->
+                <div class="hidden lg:flex justify-between items-center mb-8">
+                    <div>
+                        <h1 class="text-3xl font-bold text-slate-800">Dashboard</h1>
+                        <p class="text-sm text-slate-500 mt-1">Welcome back! Here is a summary of today's activity.</p>
+                    </div>
+                    <div class="flex items-center space-x-4 flex-shrink-0">
+                        <select id="dashboard-department-filter" class="bg-white border border-slate-200 rounded-lg text-sm focus:ring-2 focus:ring-blue-500 focus:border-blue-500 outline-none transition py-2.5 px-3">
+                            <option value="">All Departments</option>
+                            <!-- Opsi departemen akan diisi oleh JS -->
+                        </select>
+                        <div class="relative">
+                            <i data-lucide="search" class="absolute left-3 top-1/2 -translate-y-1/2 w-5 h-5 text-slate-400"></i>
+                            <input type="text" placeholder="Search employees..." class="pl-10 pr-4 py-2.5 w-64 bg-white border border-slate-200 rounded-lg text-sm focus:ring-2 focus:ring-blue-500 focus:border-blue-500 outline-none transition">
+                        </div>
+                        <button class="p-2.5 bg-white border border-slate-200 rounded-lg text-slate-500 hover:bg-slate-50">
+                            <i data-lucide="bell" class="w-5 h-5"></i>
+                        </button>
+                    </div>
+                </div>
+
+                <!-- Stat Cards -->
+                <div class="grid grid-cols-1 md:grid-cols-2 lg:grid-cols-4 gap-6 mb-8">
+                    <div class="bg-white p-6 rounded-xl border border-slate-200 flex items-center space-x-4">
+                        <div class="p-3 bg-blue-100 rounded-lg text-blue-600">
+                            <i data-lucide="users" class="w-6 h-6"></i>
+                        </div>
+                        <div>
+                            <p class="text-sm text-slate-500 font-medium">Total Employees</p>
+                            <p id="stat-total-employees" class="text-2xl font-bold text-slate-800">0</p>
+                        </div>
+                    </div>
+                    <div class="bg-white p-6 rounded-xl border border-slate-200 flex items-center space-x-4">
+                        <div class="p-3 bg-green-100 rounded-lg text-green-600">
+                            <i data-lucide="user-check" class="w-6 h-6"></i>
+                        </div>
+                        <div>
+                            <p class="text-sm text-slate-500 font-medium">Present Today</p>
+                            <p id="stat-present-today" class="text-2xl font-bold text-slate-800">0</p>
+                        </div>
+                    </div>
+                    <div class="bg-white p-6 rounded-xl border border-slate-200 flex items-center space-x-4">
+                        <div class="p-3 bg-red-100 rounded-lg text-red-600">
+                            <i data-lucide="user-x" class="w-6 h-6"></i>
+                        </div>
+                        <div>
+                            <p class="text-sm text-slate-500 font-medium">Absent Today</p>
+                            <p id="stat-absent-today" class="text-2xl font-bold text-slate-800">0</p>
+                        </div>
+                    </div>
+                    <div class="bg-white p-6 rounded-xl border border-slate-200 flex items-center space-x-4">
+                        <div class="p-3 bg-orange-100 rounded-lg text-orange-600">
+                            <i data-lucide="mail-check" class="w-6 h-6"></i>
+                        </div>
+                        <div>
+                            <p class="text-sm text-slate-500 font-medium">Pending Approval</p>
+                            <p id="stat-pending-requests" class="text-2xl font-bold text-slate-800">0</p>
+                        </div>
+                    </div>
+                </div>
+
+                <!-- Charts and Tables -->
+                <div class="bg-white p-6 rounded-xl border border-slate-200">
+                    <div class="flex justify-between items-center mb-4">
+                        <h3 class="text-lg font-semibold text-slate-800">Weekly Attendance Activity</h3>
+                        <div id="attendance-chart-nav" class="flex items-center space-x-1">
+                            <button id="btn-prev-week" title="Previous Week" class="p-1.5 rounded-md text-slate-500 hover:bg-slate-100 hover:text-slate-700">
+                                <i data-lucide="chevron-left" class="w-5 h-5 pointer-events-none"></i>
+                            </button>
+                            <button id="btn-this-week" class="px-3 py-1 text-sm font-semibold rounded-md text-slate-500 hover:bg-slate-100 hover:text-slate-700">This Week</button>
+                            <button id="btn-next-week" title="Next Week" class="p-1.5 rounded-md text-slate-500 hover:bg-slate-100 hover:text-slate-700" disabled>
+                                <i data-lucide="chevron-right" class="w-5 h-5 pointer-events-none"></i>
+                            </button>
+                        </div>
+                    </div>
+                    <div class="h-72" id="weekly-attendance-chart-container">
+                        <canvas id="weeklyAttendanceChart"></canvas>
+                    </div>
+                </div>
+
+                <div class="grid grid-cols-1 lg:grid-cols-3 gap-6 mt-6">
+                    <!-- Gender Distribution Chart -->
+                    <div class="bg-white p-6 rounded-xl border border-slate-200">
+                        <h3 class="text-lg font-semibold text-slate-800 mb-4">Gender Distribution</h3>
+                        <div class="h-72" id="gender-chart-container">
+                            <canvas id="genderDistributionChart"></canvas>
+                        </div>
+                    </div>
+                    <!-- Recent Activity -->
+                    <div class="lg:col-span-2 bg-white p-6 rounded-xl border border-slate-200">
+                        <h3 class="text-lg font-semibold text-slate-800 mb-4">Recent Activity</h3>
+                        <div class="space-y-4" id="recent-activity-list">
+                            <div class="flex items-center justify-center text-slate-500 py-4">
+                                <i data-lucide="loader-2" class="animate-spin mr-2"></i>
+                                <span>Loading recent activity...</span>
+                            </div>
+                        </div>
+                    </div>
+                </div>
+            </div>
+
+            <!-- View: Settings -->
+            <div id="view-settings" class="p-8 hidden">
+                <!-- Header -->
+                <div class="mb-8 hidden lg:block">
+                    <h1 class="text-3xl font-bold text-slate-800">Settings</h1>
+                    <p class="text-sm text-slate-500 mt-1">Manage general settings for your company.</p>
+                </div>
+
+                <!-- Settings Cards -->
+                <div class="grid grid-cols-1 md:grid-cols-2 lg:grid-cols-3 gap-6">
+                    <a href="#settings/users" id="card-settings-user" class="block bg-white p-6 rounded-xl border border-slate-200 hover:border-blue-500 hover:shadow-lg transition-all">
+                        <div class="flex items-center space-x-4">
+                            <div class="p-3 bg-purple-100 rounded-lg text-purple-600">
+                                <i data-lucide="user-cog" class="w-6 h-6"></i>
+                            </div>
+                            <div>
+                                <p class="text-lg font-bold text-slate-800">User Settings</p>
+                                <p class="text-sm text-slate-500 mt-1">Manage user accounts and data.</p>
+                            </div>
+                        </div>
+                    </a>
+                    <a href="#settings/roles" id="card-settings-role" class="block bg-white p-6 rounded-xl border border-slate-200 hover:border-blue-500 hover:shadow-lg transition-all">
+                        <div class="flex items-center space-x-4">
+                            <div class="p-3 bg-teal-100 rounded-lg text-teal-600">
+                                <i data-lucide="shield-check" class="w-6 h-6"></i>
+                            </div>
+                            <div>
+                                <p class="text-lg font-bold text-slate-800">Role Settings</p>
+                                <p class="text-sm text-slate-500 mt-1">Set permissions for each role.</p>
+                            </div>
+                        </div>
+                    </a>
+                    <a href="#settings/positions" id="card-settings-position" class="block bg-white p-6 rounded-xl border border-slate-200 hover:border-blue-500 hover:shadow-lg transition-all">
+                        <div class="flex items-center space-x-4">
+                            <div class="p-3 bg-indigo-100 rounded-lg text-indigo-600">
+                                <i data-lucide="briefcase" class="w-6 h-6"></i>
+                            </div>
+                            <div>
+                                <p class="text-lg font-bold text-slate-800">Position Settings</p>
+                                <p class="text-sm text-slate-500 mt-1">Manage the list of positions in the company.</p>
+                            </div>
+                        </div>
+                    </a>
+                    <a href="#settings/departments" id="card-settings-department" class="block bg-white p-6 rounded-xl border border-slate-200 hover:border-blue-500 hover:shadow-lg transition-all">
+                        <div class="flex items-center space-x-4">
+                            <div class="p-3 bg-rose-100 rounded-lg text-rose-600">
+                                <i data-lucide="network" class="w-6 h-6"></i>
+                            </div>
+                            <div>
+                                <p class="text-lg font-bold text-slate-800">Department Settings</p>
+                                <p class="text-sm text-slate-500 mt-1">Manage the company's department list.</p>
+                            </div>
+                        </div>
+                    </a>
+                    <a href="#settings/work-schedules" id="card-settings-work-schedule" class="block bg-white p-6 rounded-xl border border-slate-200 hover:border-blue-500 hover:shadow-lg transition-all">
+                        <div class="flex items-center space-x-4">
+                            <div class="p-3 bg-sky-100 rounded-lg text-sky-600">
+                                <i data-lucide="clock-3" class="w-6 h-6"></i>
+                            </div>
+                            <div>
+                                <p class="text-lg font-bold text-slate-800">Schedule Settings</p>
+                                <p class="text-sm text-slate-500 mt-1">Define shifts, schedules, and absence codes.</p>
+                            </div>
+                        </div>
+                    </a>
+                    <a href="#settings/employee-status" id="card-settings-employee-status" class="block bg-white p-6 rounded-xl border border-slate-200 hover:border-blue-500 hover:shadow-lg transition-all">
+                        <div class="flex items-center space-x-4">
+                            <div class="p-3 bg-amber-100 rounded-lg text-amber-600">
+                                <i data-lucide="id-card" class="w-6 h-6"></i>
+                            </div>
+                            <div>
+                                <p class="text-lg font-bold text-slate-800">Employee Status</p>
+                                <p class="text-sm text-slate-500 mt-1">Manage PKWT, DW, and Casual statuses.</p>
+                            </div>
+                        </div>
+                    </a>
+                    <a href="#settings/employee-levels" id="card-settings-employee-level" class="block bg-white p-6 rounded-xl border border-slate-200 hover:border-blue-500 hover:shadow-lg transition-all">
+                        <div class="flex items-center space-x-4">
+                            <div class="p-3 bg-yellow-100 rounded-lg text-yellow-600">
+                                <i data-lucide="award" class="w-6 h-6"></i>
+                            </div>
+                            <div>
+                                <p class="text-lg font-bold text-slate-800">Employee Level</p>
+                                <p class="text-sm text-slate-500 mt-1">Manage Staff, Supervisor, Manager levels.</p>
+                            </div>
+                        </div>
+                    </a>
+                    <a href="#settings/marital-status" id="card-settings-marital-status" class="block bg-white p-6 rounded-xl border border-slate-200 hover:border-blue-500 hover:shadow-lg transition-all">
+                        <div class="flex items-center space-x-4">
+                            <div class="p-3 bg-pink-100 rounded-lg text-pink-600">
+                                <i data-lucide="heart" class="w-6 h-6"></i>
+                            </div>
+                            <div>
+                                <p class="text-lg font-bold text-slate-800">Marital Status</p>
+                                <p class="text-sm text-slate-500 mt-1">Manage marital status types.</p>
+                            </div>
+                        </div>
+                    </a>
+                    <a href="#settings/location" id="card-settings-location" class="block bg-white p-6 rounded-xl border border-slate-200 hover:border-blue-500 hover:shadow-lg transition-all">
+                        <div class="flex items-center space-x-4">
+                            <div class="p-3 bg-cyan-100 rounded-lg text-cyan-600">
+                                <i data-lucide="map-pin" class="w-6 h-6"></i>
+                            </div>
+                            <div>
+                                <p class="text-lg font-bold text-slate-800">Location Settings</p>
+                                <p class="text-sm text-slate-500 mt-1">Set attendance geofencing points.</p>
+                            </div>
+                        </div>
+                    </a>
+                </div>
+            </div>
+
+            <!-- View: Employee Status Settings -->
+            <div id="view-settings-employee-status" class="p-8 hidden">
+                <!-- Header -->
+                <div class="mb-8 hidden lg:block">
+                    <h1 class="text-3xl font-bold text-slate-800">Employee Status Settings</h1>
+                    <p class="text-sm text-slate-500 mt-1">Manage employee statuses like PKWT, Daily Worker (DW), and Casual.</p>
+                </div>
+
+                <!-- Main Content -->
+                <div class="bg-white p-6 rounded-xl border border-slate-200">
+                    <div class="flex justify-between items-center mb-6">
+                        <h2 class="text-xl font-bold text-slate-800">Status Management</h2>
+                        <button id="btn-add-employee-status" class="bg-blue-600 text-white px-4 py-2 rounded-lg hover:bg-blue-700 flex items-center space-x-2">
+                            <i data-lucide="plus" class="w-4 h-4"></i>
+                            <span>Add Status</span>
+                        </button>
+                    </div>
+                    <div class="overflow-x-auto">
+                        <table class="w-full text-sm text-left text-slate-500">
+                            <thead class="text-xs text-slate-700 uppercase bg-slate-50">
+                                <tr>
+                                    <th scope="col" class="px-6 py-3">Status Name</th>
+                                    <th scope="col" class="px-6 py-3">Description</th>
+                                    <th scope="col" class="px-6 py-3">Actions</th>
+                                </tr>
+                            </thead>
+                            <tbody id="employee-statuses-table-body">
+                                <!-- Status rows will be injected by JS. For now, show a placeholder. -->
+                                <tr>
+                                    <td colspan="3" class="text-center py-4 text-slate-500">No employee statuses configured yet.</td>
+                                </tr>
+                            </tbody>
+                        </table>
+                    </div>
+                </div>
+            </div>
+
+            <!-- View: Employee Level Settings -->
+            <div id="view-settings-employee-levels" class="p-8 hidden">
+                <!-- Header -->
+                <div class="mb-8 hidden lg:block">
+                    <h1 class="text-3xl font-bold text-slate-800">Employee Level Settings</h1>
+                    <p class="text-sm text-slate-500 mt-1">Manage employee levels like Staff, Supervisor, and Manager.</p>
+                </div>
+
+                <!-- Main Content -->
+                <div class="bg-white p-6 rounded-xl border border-slate-200">
+                    <div class="flex justify-between items-center mb-6">
+                        <h2 class="text-xl font-bold text-slate-800">Level Management</h2>
+                        <button id="btn-add-employee-level" class="bg-blue-600 text-white px-4 py-2 rounded-lg hover:bg-blue-700 flex items-center space-x-2">
+                            <i data-lucide="plus" class="w-4 h-4"></i>
+                            <span>Add Level</span>
+                        </button>
+                    </div>
+                    <div class="overflow-x-auto">
+                        <table class="w-full text-sm text-left text-slate-500">
+                            <thead class="text-xs text-slate-700 uppercase bg-slate-50">
+                                <tr>
+                                    <th scope="col" class="px-6 py-3">Level Name</th>
+                                    <th scope="col" class="px-6 py-3">Description</th>
+                                    <th scope="col" class="px-6 py-3">Actions</th>
+                                </tr>
+                            </thead>
+                            <tbody id="employee-levels-table-body">
+                                <!-- Level rows will be injected by JS. -->
+                            </tbody>
+                        </table>
+                    </div>
+                </div>
+            </div>
+
+            <!-- View: Marital Status Settings -->
+            <div id="view-settings-marital-status" class="p-8 hidden">
+                <!-- Header -->
+                <div class="mb-8 hidden lg:block">
+                    <h1 class="text-3xl font-bold text-slate-800">Marital Status Settings</h1>
+                    <p class="text-sm text-slate-500 mt-1">Manage the available marital status types.</p>
+                </div>
+
+                <!-- Main Content -->
+                <div class="bg-white p-6 rounded-xl border border-slate-200">
+                    <div class="flex justify-between items-center mb-6">
+                        <h2 class="text-xl font-bold text-slate-800">Marital Status List</h2>
+                        <button id="btn-add-marital-status" class="bg-blue-600 text-white px-4 py-2 rounded-lg hover:bg-blue-700 flex items-center space-x-2">
+                            <i data-lucide="plus" class="w-4 h-4"></i>
+                            <span>Add Status</span>
+                        </button>
+                    </div>
+                    <div class="overflow-x-auto">
+                        <table class="w-full text-sm text-left text-slate-500">
+                            <thead class="text-xs text-slate-700 uppercase bg-slate-50">
+                                <tr>
+                                    <th scope="col" class="px-6 py-3">Code</th>
+                                    <th scope="col" class="px-6 py-3">Description</th>
+                                    <th scope="col" class="px-6 py-3">Actions</th>
+                                </tr>
+                            </thead>
+                            <tbody id="marital-status-table-body">
+                                <!-- Marital status rows will be injected by JS -->
+                                <tr>
+                                    <td colspan="2" class="text-center py-4">
+                                        <div class="flex items-center justify-center text-slate-500">
+                                            <i data-lucide="loader-2" class="animate-spin mr-2"></i>
+                                            Loading marital status data...
+                                        </div>
+                                    </td>
+                                </tr>
+                            </tbody>
+                        </table>
+                    </div>
+                </div>
+            </div>
+
+            <!-- View: Location Settings -->
+            <div id="view-settings-location" class="p-8 hidden">
+                <!-- Header -->
+                <div class="mb-8 hidden lg:block">
+                    <h1 class="text-3xl font-bold text-slate-800">Attendance Location Settings</h1>
+                    <p class="text-sm text-slate-500 mt-1">Set the GPS point and radius for attendance validation.</p>
+                </div>
+
+                <!-- Main Content -->
+                <div class="bg-white p-6 rounded-xl border border-slate-200">
+                    <form id="location-settings-form">
+                        <h2 class="text-xl font-bold text-slate-800 mb-4">Geofencing Point</h2>
+                        <p class="text-sm text-slate-500 mb-4">Click on the map to set the office location, or enter the coordinates manually. The circle represents the allowed attendance radius.</p>
+                        
+                        <div id="location-setting-map" class="w-full h-80 bg-slate-200 rounded-lg border border-slate-300 mb-4">
+                            <!-- Leaflet map will be initialized here -->
+                        </div>
+
+                        <div class="grid grid-cols-1 md:grid-cols-3 gap-4">
+                            <div>
+                                <label for="location-latitude" class="block text-sm font-medium text-slate-700 mb-1">Latitude</label>
+                                <input type="number" step="any" id="location-latitude" class="w-full px-3 py-2 border border-slate-300 rounded-md text-sm" required>
+                            </div>
+                            <div>
+                                <label for="location-longitude" class="block text-sm font-medium text-slate-700 mb-1">Longitude</label>
+                                <input type="number" step="any" id="location-longitude" class="w-full px-3 py-2 border border-slate-300 rounded-md text-sm" required>
+                            </div>
+                            <div>
+                                <label for="location-radius" class="block text-sm font-medium text-slate-700 mb-1">Radius (meters)</label>
+                                <input type="number" id="location-radius" class="w-full px-3 py-2 border border-slate-300 rounded-md text-sm" required placeholder="e.g., 50">
+                            </div>
+                        </div>
+                        <div class="mt-6 text-right">
+                            <button type="submit" class="bg-blue-600 text-white px-6 py-2.5 rounded-lg hover:bg-blue-700 font-semibold">Save Location Settings</button>
+                        </div>
+                    </form>
+                </div>
+            </div>
+
+            <!-- View: Role Settings -->
+            <div id="view-settings-role" class="p-8 hidden">
+                <!-- Header -->
+                <div class="mb-8 hidden lg:block">
+                    <h1 class="text-3xl font-bold text-slate-800">Role Settings</h1>
+                    <p class="text-sm text-slate-500 mt-1">Add, view, and manage permissions for each role.</p>
+                </div>
+
+                <!-- Main Content -->
+                <div class="bg-white p-6 rounded-xl border border-slate-200">
+                    <div class="flex justify-between items-center mb-6">
+                        <h2 class="text-xl font-bold text-slate-800">Role Management</h2>
+                        <button id="btn-add-role" class="bg-blue-600 text-white px-4 py-2 rounded-lg hover:bg-blue-700 flex items-center space-x-2">
+                            <i data-lucide="plus" class="w-4 h-4"></i>
+                            <span>Add Role</span>
+                        </button>
+                    </div>
+                    <div class="overflow-x-auto">
+                        <table class="w-full text-sm text-left text-slate-500">
+                            <thead class="text-xs text-slate-700 uppercase bg-slate-50">
+                                <tr>
+                                    <th scope="col" class="px-6 py-3">Role Name</th>
+                                    <th scope="col" class="px-6 py-3">User Count</th>
+                                    <th scope="col" class="px-6 py-3">Actions</th>
+                                </tr>
+                            </thead>
+                            <tbody id="roles-table-body">
+                                <!-- Role rows will be injected by JS -->
+                                <tr>
+                                    <td colspan="3" class="text-center py-4">
+                                        <div class="flex items-center justify-center">
+                                            <i data-lucide="loader-2" class="animate-spin mr-2"></i>
+                                            Loading role data...
+                                        </div>
+                                    </td>
+                                </tr>
+                            </tbody>
+                        </table>
+                    </div>
+                </div>
+            </div>
+
+            <!-- View: Position Settings -->
+            <div id="view-settings-position" class="p-8 hidden">
+                <!-- Header -->
+                <div class="mb-8 hidden lg:block">
+                    <h1 class="text-3xl font-bold text-slate-800">Position Settings</h1>
+                    <p class="text-sm text-slate-500 mt-1">Add, view, and manage the list of positions in your company.</p>
+                </div>
+
+                <!-- Main Content -->
+                <div class="bg-white p-6 rounded-xl border border-slate-200">
+                    <div class="flex justify-between items-center mb-6">
+                        <h2 class="text-xl font-bold text-slate-800">Position Management</h2>
+                        <button id="btn-add-position" class="bg-blue-600 text-white px-4 py-2 rounded-lg hover:bg-blue-700 flex items-center space-x-2">
+                            <i data-lucide="plus" class="w-4 h-4"></i>
+                            <span>Add Position</span>
+                        </button>
+                    </div>
+                    <div class="overflow-x-auto">
+                        <table class="w-full text-sm text-left text-slate-500">
+                            <thead class="text-xs text-slate-700 uppercase bg-slate-50">
+                                <tr>
+                                    <th scope="col" class="px-6 py-3">Position Name</th>
+                                    <th scope="col" class="px-6 py-3">Actions</th>
+                                </tr>
+                            </thead>
+                            <tbody id="positions-table-body">
+                                <!-- Position rows will be injected by JS -->
+                                <tr>
+                                    <td colspan="2" class="text-center py-4">
+                                        <div class="flex items-center justify-center"><i data-lucide="loader-2" class="animate-spin mr-2"></i>Loading position data...</div>
+                                    </td>
+                                </tr>
+                            </tbody>
+                        </table>
+                    </div>
+                </div>
+            </div>
+
+            <!-- View: Department Settings -->
+            <div id="view-settings-department" class="p-8 hidden">
+                <!-- Header -->
+                <div class="mb-8 hidden lg:block">
+                    <h1 class="text-3xl font-bold text-slate-800">Department Settings</h1>
+                    <p class="text-sm text-slate-500 mt-1">Add, view, and manage the list of departments in your company.</p>
+                </div>
+
+                <!-- Main Content -->
+                <div class="bg-white p-6 rounded-xl border border-slate-200">
+                    <div class="flex justify-between items-center mb-6">
+                        <h2 class="text-xl font-bold text-slate-800">Department Management</h2>
+                        <button id="btn-add-department" class="bg-blue-600 text-white px-4 py-2 rounded-lg hover:bg-blue-700 flex items-center space-x-2">
+                            <i data-lucide="plus" class="w-4 h-4"></i>
+                            <span>Add Department</span>
+                        </button>
+                    </div>
+                    <div class="overflow-x-auto">
+                        <table class="w-full text-sm text-left text-slate-500">
+                            <thead class="text-xs text-slate-700 uppercase bg-slate-50">
+                                <tr>
+                                    <th scope="col" class="px-6 py-3">Department Name</th>
+                                    <th scope="col" class="px-6 py-3">Actions</th>
+                                </tr>
+                            </thead>
+                            <tbody id="departments-table-body">
+                                <!-- Department rows will be injected by JS -->
+                                <tr>
+                                    <td colspan="2" class="text-center py-4">
+                                        <div class="flex items-center justify-center"><i data-lucide="loader-2" class="animate-spin mr-2"></i>Loading department data...</div>
+                                    </td>
+                                </tr>
+                            </tbody>
+                        </table>
+                    </div>
+                </div>
+            </div>
+
+            <!-- View: Work Schedule Settings -->
+            <div id="view-settings-work-schedule" class="p-8 hidden">
+                <!-- Header -->
+                <div class="mb-8 hidden lg:block">
+                    <h1 class="text-3xl font-bold text-slate-800">Schedule Settings</h1>
+                    <p class="text-sm text-slate-500 mt-1">Define shifts, work schedules, and absence types.</p>
+                </div>
+
+                <!-- Tabs -->
+                <div class="mb-6 border-b border-slate-200">
+                    <nav class="-mb-px flex space-x-6" aria-label="Tabs">
+                        <button id="tab-work-schedules" class="whitespace-nowrap py-3 px-1 border-b-2 font-medium text-sm text-blue-600 border-blue-600">
+                            Work Schedules
+                        </button>
+                        <button id="tab-absence-types" class="whitespace-nowrap py-3 px-1 border-b-2 font-medium text-sm text-slate-500 border-transparent hover:text-slate-700 hover:border-slate-300">
+                            Absence Types
+                        </button>
+                    </nav>
+                </div>
+
+                <!-- Tab Content: Work Schedules -->
+                <div id="tab-content-work-schedules" class="tab-content-schedule-settings">
+                    <div class="bg-white p-6 rounded-xl border border-slate-200">
+                        <div class="flex justify-between items-center mb-6">
+                            <h2 class="text-xl font-bold text-slate-800">Work Schedule Management</h2>
+                            <button id="btn-add-work-schedule" class="bg-blue-600 text-white px-4 py-2 rounded-lg hover:bg-blue-700 flex items-center space-x-2">
+                                <i data-lucide="plus" class="w-4 h-4"></i>
+                                <span>Add Work Schedule</span>
+                            </button>
+                        </div>
+                        <div class="overflow-x-auto">
+                            <table class="w-full text-sm text-left text-slate-500">
+                                <thead class="text-xs text-slate-700 uppercase bg-slate-50">
+                                    <tr>
+                                        <th scope="col" class="px-6 py-3">Code</th>
+                                        <th scope="col" class="px-6 py-3">Schedule Name</th>
+                                        <th scope="col" class="px-6 py-3">Start Time</th>
+                                        <th scope="col" class="px-6 py-3">End Time</th>
+                                        <th scope="col" class="px-6 py-3">Actions</th>
+                                    </tr>
+                                </thead>
+                                <tbody id="work-schedules-table-body">
+                                    <!-- Work schedule rows will be injected by JS -->
+                                </tbody>
+                            </table>
+                        </div>
+                    </div>
+                </div>
+
+                <!-- Tab Content: Absence Types -->
+                <div id="tab-content-absence-types" class="tab-content-schedule-settings hidden">
+                    <div class="bg-white p-6 rounded-xl border border-slate-200">
+                        <div class="flex justify-between items-center mb-6">
+                            <h2 class="text-xl font-bold text-slate-800">Absence Type Management</h2>
+                            <button id="btn-add-absence-type" class="bg-blue-600 text-white px-4 py-2 rounded-lg hover:bg-blue-700 flex items-center space-x-2">
+                                <i data-lucide="plus" class="w-4 h-4"></i>
+                                <span>Add Absence Type</span>
+                            </button>
+                        </div>
+                        <div class="overflow-x-auto">
+                            <table class="w-full text-sm text-left text-slate-500">
+                                <thead class="text-xs text-slate-700 uppercase bg-slate-50">
+                                    <tr>
+                                        <th scope="col" class="px-6 py-3">Code</th>
+                                        <th scope="col" class="px-6 py-3">Name</th>
+                                        <th scope="col" class="px-6 py-3">Description</th>
+                                        <th scope="col" class="px-6 py-3">Category</th>
+                                        <th scope="col" class="px-6 py-3">Actions</th>
+                                    </tr>
+                                </thead>
+                                <tbody id="absence-types-table-body">
+                                    <!-- Rows will be injected by JS -->
+                                </tbody>
+                            </table>
+                        </div>
+                    </div>
+                </div>
+            </div>
+
+
+            <!-- View: User Settings -->
+            <div id="view-settings-user" class="p-8 hidden">
+                <!-- Header -->
+                <div class="hidden lg:flex items-center justify-between mb-8">
+                    <div>
+                        <h1 class="text-3xl font-bold text-slate-800">User Settings</h1>
+                        <p class="text-sm text-slate-500 mt-1">Add, view, and edit users in your company.</p>
+                    </div>
+                </div>
+
+                <!-- Main Content -->
+                <div class="bg-white p-6 rounded-xl border border-slate-200">
+                    <div class="flex justify-between items-center mb-6">
+                        <h2 class="text-2xl font-bold text-slate-800">User Management</h2>
+                        <div class="flex items-center space-x-2">
+                            <!-- Input Pencarian Baru -->
+                            <div class="relative">
+                                <div class="absolute inset-y-0 left-0 flex items-center pl-3 pointer-events-none">
+                                    <i data-lucide="search" class="w-4 h-4 text-slate-500"></i>
+                                </div>
+                                <input type="text" id="search-user-input" class="bg-slate-50 border border-slate-300 text-slate-900 text-sm rounded-lg focus:ring-blue-500 focus:border-blue-500 block w-full pl-10 p-2.5" placeholder="Search username or email...">
+                            </div>
+                            <!-- Tombol Tambah User yang sudah ada -->
+                            <button id="btn-add-user" class="bg-blue-600 text-white px-4 py-2 rounded-lg hover:bg-blue-700 flex items-center space-x-2">
+                                <i data-lucide="plus" class="w-4 h-4"></i>
+                                <span>Add User</span>
+                            </button>
+                        </div>
+                    </div>
+                    <div class="overflow-x-auto">
+                        <table class="w-full text-sm text-left text-slate-500">
+                            <thead class="text-xs text-slate-700 uppercase bg-slate-50">
+                                <tr>
+                                    <th scope="col" class="px-6 py-3">Name</th>
+                                    <th scope="col" class="px-6 py-3">Email</th>
+                                    <th scope="col" class="px-6 py-3">Role</th>
+                                    <th scope="col" class="px-6 py-3">Actions</th>
+                                </tr>
+                            </thead>
+                            <tbody id="users-table-body">
+                                <!-- User rows will be injected by JS -->
+                            </tbody>
+                        </table>
+                    </div>
+                </div>
+            </div>
+
+            <!-- View: Attendance Log -->
+            <div id="view-attendance-log" class="p-8 hidden">
+                <!-- Header -->
+                <div class="flex flex-col lg:flex-row justify-between items-start lg:items-center mb-8 gap-4">
+                    <div>
+                        <h1 class="text-3xl font-bold text-slate-800">Attendance Log</h1>
+                        <p class="text-sm text-slate-500 mt-1">View daily attendance records for all employees.</p>
+                    </div>
+                    <div class="flex items-center space-x-4 w-full lg:w-auto">
+                        <label for="attendance-date-picker" class="text-sm font-medium text-slate-600">Select Date:</label>
+                        <input type="date" id="attendance-date-picker" class="bg-white border border-slate-300 text-slate-900 text-sm rounded-lg focus:ring-blue-500 focus:border-blue-500 block w-auto p-2.5">
+                        <button id="btn-export-attendance" class="bg-green-600 text-white px-4 py-2.5 rounded-lg hover:bg-green-700 flex items-center space-x-2 text-sm">
+                            <i data-lucide="file-spreadsheet" class="w-4 h-4"></i>
+                            <span>Export to Excel</span>
+                        </button>
+                    </div>
+                </div>
+
+                <!-- Attendance Table -->
+                <div class="bg-white p-6 rounded-xl border border-slate-200">
+                    <div class="overflow-x-auto">
+                        <table class="w-full text-sm text-left text-slate-500">
+                            <thead class="text-xs text-slate-700 uppercase bg-slate-50">
+                                <tr>
+                                    <th scope="col" class="px-6 py-3">Employee Name</th>
+                                    <th scope="col" class="px-6 py-3">Emp. Status</th>
+                                    <th scope="col" class="px-6 py-3">Sched. Check In</th>
+                                    <th scope="col" class="px-6 py-3">Check In Time</th>
+                                    <th scope="col" class="px-6 py-3">Discrepancy</th>
+                                    <th scope="col" class="px-6 py-3">Sched. Check Out</th>
+                                    <th scope="col" class="px-6 py-3">Check Out Time</th>
+                                    <th scope="col" class="px-6 py-3">Discrepancy</th>
+                                    <th scope="col" class="px-6 py-3">Status</th>
+                                    <th scope="col" class="px-6 py-3">Notes</th>
+                                </tr>
+                            </thead>
+                            <tbody id="attendance-log-table-body">
+                                <!-- Rows will be injected by JS -->
+                                <tr>
+                                    <td colspan="10" class="text-center py-8">
+                                        <div class="flex items-center justify-center text-slate-500">Select a date to view records.</div>
+                                    </td>
+                                </tr>
+                            </tbody>
+                        </table>
+                    </div>
+                </div>
+            </div>
+
+            <!-- View: Schedule -->
+            <div id="view-schedule" class="p-8 hidden">
+                <h1 class="text-3xl font-bold text-slate-800 mb-6 hidden lg:block">Work Schedule Management</h1>
+                
+                <!-- Kontrol Filter -->
+                <div class="mb-6 flex items-center justify-between space-x-4 bg-white p-4 rounded-lg border border-slate-200">
+                    <div class="flex items-center space-x-4">
+                        <div>
+                            <label for="schedule-month-select" class="text-sm font-medium text-slate-600">Month</label>
+                            <select id="schedule-month-select" class="mt-1 block w-full pl-3 pr-10 py-2 text-base border-slate-300 focus:outline-none focus:ring-blue-500 focus:border-blue-500 sm:text-sm rounded-md"></select>
+                        </div>
+                        <div>
+                            <label for="schedule-year-select" class="text-sm font-medium text-slate-600">Year</label>
+                            <select id="schedule-year-select" class="mt-1 block w-full pl-3 pr-10 py-2 text-base border-slate-300 focus:outline-none focus:ring-blue-500 focus:border-blue-500 sm:text-sm rounded-md"></select>
+                        </div>
+                    </div>
+                    <!-- Tombol Edit/Save/Cancel -->
+                    <div id="schedule-controls" class="flex items-center space-x-2 flex-wrap gap-2">
+                        <input type="file" id="schedule-upload-input" class="hidden" accept=".xlsx, .xls, .csv">
+                        <button id="btn-export-schedule-template" class="bg-green-600 text-white px-4 py-2 rounded-lg hover:bg-green-700 flex items-center space-x-2">
+                            <i data-lucide="file-down" class="w-4 h-4"></i>
+                            <span>Export Template</span>
+                        </button>
+                        <button id="btn-edit-schedule" class="bg-blue-600 text-white px-4 py-2 rounded-lg hover:bg-blue-700 flex items-center space-x-2">
+                            <i data-lucide="edit" class="w-4 h-4"></i>
+                            <span>Edit Schedule</span>
+                        </button>
+                        <div id="schedule-edit-buttons" class="hidden flex items-center space-x-2">
+                            <button id="btn-upload-schedule-template" class="bg-white border border-slate-300 text-slate-700 px-4 py-2 rounded-lg hover:bg-slate-50 flex items-center space-x-2">
+                                <i data-lucide="file-up" class="w-4 h-4"></i>
+                                <span>Upload Template</span>
+                            </button>
+                            <button id="btn-cancel-schedule-edit" class="bg-white border border-slate-300 px-4 py-2 rounded-lg text-sm font-semibold text-slate-700 hover:bg-slate-50">Cancel</button>
+                            <button id="btn-save-schedule-changes" class="bg-green-600 text-white px-4 py-2 rounded-lg hover:bg-green-700 flex items-center space-x-2">
+                                <i data-lucide="save" class="w-4 h-4"></i>
+                                <span>Save Changes</span>
+                            </button>
+                        </div>
+                    </div>
+                </div>
+        
+                <!-- Tabel Jadwal -->
+                <div class="schedule-table-container bg-white rounded-lg border border-slate-200 shadow-sm">
+                    <table class="min-w-full divide-y divide-slate-200">
+                        <thead class="bg-slate-50" id="schedule-table-header"></thead>
+                        <tbody class="bg-white divide-y divide-slate-200" id="schedule-table-body"></tbody>
+                        <tfoot id="schedule-table-footer"></tfoot>
+                    </table>
+                </div>
+            </div>
+
+            <!-- View: Employees List -->
+            <div id="view-employees" class="p-8 hidden">
+                <!-- Header -->
+                <div class="flex flex-col lg:flex-row items-start lg:items-center justify-between mb-8 gap-4">
+                    <div>
+                        <h1 class="text-3xl font-bold text-slate-800">Employee List</h1>
+                        <p class="text-sm text-slate-500 mt-1">View employee profiles in your company.</p>
+                    </div>
+                    <div class="flex items-center space-x-4 w-full lg:w-auto">
+                        <div class="relative">
+                            <i data-lucide="search" class="absolute left-3 top-1/2 -translate-y-1/2 w-5 h-5 text-slate-400"></i>
+                            <input type="text" id="search-employee-input" placeholder="Search employee name..." class="pl-10 pr-4 py-2.5 w-64 bg-white border border-slate-200 rounded-lg text-sm focus:ring-2 focus:ring-blue-500 focus:border-blue-500 outline-none transition">
+                        </div>
+                        <button id="btn-bulk-import-employee" class="bg-emerald-600 text-white px-4 py-2.5 rounded-lg hover:bg-emerald-700 flex items-center space-x-2 text-sm font-medium">
+                            <i data-lucide="file-up" class="w-4 h-4"></i>
+                            <span>Import Excel</span>
+                        </button>
+                        <button id="btn-add-employee" class="bg-blue-600 text-white px-4 py-2.5 rounded-lg hover:bg-blue-700 flex items-center space-x-2 text-sm font-medium">
+                            <i data-lucide="plus" class="w-4 h-4"></i>
+                            <span>Add Employee</span>
+                        </button>
+                    </div>
+                </div>
+
+                <!-- Tabs -->
+                <div class="mb-4 border-b border-slate-200">
+                    <nav class="-mb-px flex space-x-6" aria-label="Tabs">
+                        <button id="tab-active-employees" class="whitespace-nowrap py-3 px-1 border-b-2 font-medium text-sm text-blue-600 border-blue-600">
+                            Active Employees
+                        </button>
+                        <button id="tab-inactive-employees" class="whitespace-nowrap py-3 px-1 border-b-2 font-medium text-sm text-slate-500 border-transparent hover:text-slate-700 hover:border-slate-300">
+                            Inactive Employees
+                        </button>
+                    </nav>
+                </div>
+
+                <!-- Employee Table -->
+                <div class="bg-white p-6 rounded-xl border border-slate-200">
+                    <div class="overflow-x-auto">
+                        <table class="w-full text-sm text-left text-slate-500">
+                            <thead class="text-xs text-slate-700 uppercase bg-slate-50">
+                                <tr>
+                                    <th scope="col" class="px-6 py-3">Employee</th>
+                                    <th scope="col" class="px-6 py-3">Position</th>
+                                    <th scope="col" class="px-6 py-3">Department</th>
+                                    <th scope="col" class="px-6 py-3">Status</th>
+                                </tr>
+                            </thead>
+                            <tbody id="employee-table-body">
+                                <!-- Employee rows will be injected by JS -->
+                                <tr>
+                                    <td colspan="4" class="text-center py-8">
+                                        <div class="flex items-center justify-center text-slate-500">
+                                            <i data-lucide="loader-2" class="animate-spin mr-2"></i>
+                                            Loading employee data...
+                                        </div>
+                                    </td>
+                                </tr>
+                            </tbody>
+                        </table>
+                    </div>
+                    <!-- Pagination Controls -->
+                    <div id="employee-pagination-controls" class="flex justify-between items-center pt-4 mt-4 border-t border-slate-200">
+                        <!-- Pagination will be rendered here by JS -->
+                    </div>
+                </div>
+            </div>
+
+            <!-- View: Employee Profile Detail -->
+            <div id="view-employee-profile" class="p-8 hidden">
+                <!-- Profile content will be injected by JS -->
+            </div>
+
+            <!-- View: Requests -->
+            <div id="view-requests" class="p-8 hidden">
+                <!-- Header -->
+                <div class="flex flex-col lg:flex-row justify-between items-start lg:items-center mb-8 gap-4">
+                    <div>
+                        <h1 class="text-3xl font-bold text-slate-800">Requests</h1>
+                        <p class="text-sm text-slate-500 mt-1">Review and approve employee requests.</p>
+                    </div>
+                </div>
+
+                <!-- Tabs -->
+                <div class="mb-4 border-b border-slate-200">
+                    <nav class="-mb-px flex space-x-6" aria-label="Tabs">
+                        <button id="tab-requests-pending" data-status="pending" class="request-tab whitespace-nowrap py-3 px-1 border-b-2 font-medium text-sm text-blue-600 border-blue-600">
+                            Pending
+                        </button>
+                        <button id="tab-requests-history" data-status="history" class="request-tab whitespace-nowrap py-3 px-1 border-b-2 font-medium text-sm text-slate-500 border-transparent hover:text-slate-700 hover:border-slate-300">
+                            History
+                        </button>
+                    </nav>
+                </div>
+
+                <!-- Requests Table -->
+                <div class="bg-white p-6 rounded-xl border border-slate-200">
+                    <div class="overflow-x-auto">
+                        <table class="w-full text-sm text-left text-slate-500">
+                            <thead class="text-xs text-slate-700 uppercase bg-slate-50">
+                                <tr>
+                                    <th scope="col" class="px-6 py-3">Employee</th>
+                                    <th scope="col" class="px-6 py-3">Request Type</th>
+                                    <th scope="col" class="px-6 py-3">Date Range</th>
+                                    <th scope="col" class="px-6 py-3">Reason</th>
+                                    <th scope="col" class="px-6 py-3">Submitted</th>
+                                    <th scope="col" class="px-6 py-3">Status</th>
+                                    <th scope="col" class="px-6 py-3 text-center">Actions</th>
+                                </tr>
+                            </thead>
+                            <tbody id="requests-table-body">
+                                <!-- Rows will be injected by JS -->
+                                <tr>
+                                    <td colspan="7" class="text-center py-8">
+                                        <div class="flex items-center justify-center text-slate-500">
+                                            <i data-lucide="loader-2" class="animate-spin mr-2"></i>
+                                            Loading requests...
+                                        </div>
+                                    </td>
+                                </tr>
+                            </tbody>
+                        </table>
+                    </div>
+                </div>
+            </div>
+
+            <!-- View: Reports -->
+            <div id="view-reports" class="p-8 hidden">
+                <!-- Header -->
+                <div class="mb-8 hidden lg:block">
+                    <h1 class="text-3xl font-bold text-slate-800">Reports</h1>
+                    <p class="text-sm text-slate-500 mt-1">Generate and view various company reports.</p>
+                </div>
+
+                <!-- Report Cards -->
+                <div class="grid grid-cols-1 md:grid-cols-2 lg:grid-cols-3 gap-6">
+                    <a href="#reports/attendance" id="card-report-attendance" class="block bg-white p-6 rounded-xl border border-slate-200 hover:border-blue-500 hover:shadow-lg transition-all">
+                        <div class="flex items-center space-x-4">
+                            <div class="p-3 bg-green-100 rounded-lg text-green-600">
+                                <i data-lucide="clipboard-check" class="w-6 h-6"></i>
+                            </div>
+                            <div>
+                                <p class="text-lg font-bold text-slate-800">Attendance Report</p>
+                                <p class="text-sm text-slate-500 mt-1">Detailed attendance logs and summaries.</p>
+                            </div>
+                        </div>
+                    </a>
+                    <a href="#reports/leave" id="card-report-leave" class="block bg-white p-6 rounded-xl border border-slate-200 hover:border-blue-500 hover:shadow-lg transition-all">
+                        <div class="flex items-center space-x-4">
+                            <div class="p-3 bg-orange-100 rounded-lg text-orange-600">
+                                <i data-lucide="calendar-off" class="w-6 h-6"></i>
+                            </div>
+                            <div>
+                                <p class="text-lg font-bold text-slate-800">Leave Report</p>
+                                <p class="text-sm text-slate-500 mt-1">Track employee leave balances and history.</p>
+                            </div>
+                        </div>
+                    </a>
+                </div>
+            </div>
+
+            <!-- Placeholder for specific report views -->
+            <div id="view-report-attendance" class="p-8 hidden">
+                <!-- Header -->
+                <div class="mb-8 hidden lg:block">
+                    <h1 class="text-3xl font-bold text-slate-800">Attendance Report</h1>
+                    <p class="text-sm text-slate-500 mt-1">Generate detailed attendance reports for employees.</p>
+                </div>
+
+                <!-- Filter Section -->
+                <div class="bg-white p-6 rounded-xl border border-slate-200 mb-6">
+                    <h2 class="text-xl font-bold text-slate-800 mb-4">Report Filters</h2>
+                    <div class="grid grid-cols-1 md:grid-cols-2 lg:grid-cols-4 gap-4 items-end">
+                        <div>
+                            <label for="report-start-date" class="block text-sm font-medium text-slate-700 mb-1">Start Date</label>
+                            <input type="date" id="report-start-date" class="w-full px-3 py-2 border border-slate-300 rounded-md text-sm">
+                        </div>
+                        <div>
+                            <label for="report-end-date" class="block text-sm font-medium text-slate-700 mb-1">End Date</label>
+                            <input type="date" id="report-end-date" class="w-full px-3 py-2 border border-slate-300 rounded-md text-sm">
+                        </div>
+                        <div>
+                            <label for="report-department-filter" class="block text-sm font-medium text-slate-700 mb-1">Department</label>
+                            <select id="report-department-filter" class="w-full px-3 py-2 border border-slate-300 rounded-md text-sm">
+                                <option value="">All Departments</option>
+                                <!-- Options will be populated by JS -->
+                            </select>
+                        </div>
+                        <div>
+                            <button id="btn-generate-attendance-report" class="w-full bg-blue-600 text-white px-4 py-2.5 rounded-lg hover:bg-blue-700 flex items-center justify-center space-x-2 text-sm font-medium">
+                                <i data-lucide="play" class="w-4 h-4"></i>
+                                <span>Generate Report</span>
+                            </button>
+                        </div>
+                    </div>
+                </div>
+
+                <!-- Report Results Section -->
+                <div id="attendance-report-results-container" class="bg-white p-6 rounded-xl border border-slate-200 hidden">
+                    <div class="flex justify-between items-center mb-6">
+                        <div>
+                            <h2 class="text-xl font-bold text-slate-800">Report Results</h2>
+                            <p id="report-summary-text" class="text-sm text-slate-500 mt-1">Summary for the selected period.</p>
+                        </div>
+                        <button id="btn-export-generated-report" class="bg-green-600 text-white px-4 py-2 rounded-lg hover:bg-green-700 flex items-center space-x-2 text-sm">
+                            <i data-lucide="file-spreadsheet" class="w-4 h-4"></i>
+                            <span>Export to Excel</span>
+                        </button>
+                    </div>
+                    <div class="overflow-x-auto">
+                        <table id="attendance-report-table" class="w-full text-sm text-left text-slate-500">
+                            <thead class="text-xs text-slate-700 uppercase bg-slate-50">
+                                <tr>
+                                    <th scope="col" class="px-6 py-3">Employee</th>
+                                    <th scope="col" class="px-6 py-3 text-center">Present</th>
+                                    <th scope="col" class="px-6 py-3 text-center">Absent</th>
+                                    <th scope="col" class="px-6 py-3 text-center">Late</th>
+                                    <th scope="col" class="px-6 py-3 text-center">On Leave</th>
+                                    <th scope="col" class="px-6 py-3 text-center">Total Workdays</th>
+                                    <th scope="col" class="px-6 py-3 text-center">Attendance %</th>
+                                    <th scope="col" class="px-6 py-3 text-center">Actions</th>
+                                </tr>
+                            </thead>
+                            <tbody id="attendance-report-table-body">
+                                <!-- Report rows will be injected by JS -->
+                            </tbody>
+                        </table>
+                    </div>
+                </div>
+                
+                <div id="attendance-report-placeholder" class="text-center py-16 bg-white rounded-xl border border-slate-200">
+                    <div class="flex justify-center mb-4">
+                        <div class="p-4 bg-slate-100 rounded-full text-slate-500">
+                            <i data-lucide="file-bar-chart-2" class="w-10 h-10"></i>
+                        </div>
+                    </div>
+                    <h3 class="text-lg font-semibold text-slate-700">Generate Your Attendance Report</h3>
+                    <p class="text-sm text-slate-500 mt-1">Select your filters and click "Generate Report" to view data.</p>
+                </div>
+            </div>
+            <div id="view-report-leave" class="p-8 hidden">
+                <!-- Header -->
+                <div class="mb-8 hidden lg:block">
+                    <h1 class="text-3xl font-bold text-slate-800">Leave Report</h1>
+                    <p class="text-sm text-slate-500 mt-1">Generate and view reports on employee leave requests.</p>
+                </div>
+
+                <!-- Filter Section -->
+                <div class="bg-white p-6 rounded-xl border border-slate-200 mb-6">
+                    <h2 class="text-xl font-bold text-slate-800 mb-4">Report Filters</h2>
+                    <div class="grid grid-cols-1 md:grid-cols-2 lg:grid-cols-5 gap-4 items-end">
+                        <div>
+                            <label for="leave-report-start-date" class="block text-sm font-medium text-slate-700 mb-1">Start Date</label>
+                            <input type="date" id="leave-report-start-date" class="w-full px-3 py-2 border border-slate-300 rounded-md text-sm">
+                        </div>
+                        <div>
+                            <label for="leave-report-end-date" class="block text-sm font-medium text-slate-700 mb-1">End Date</label>
+                            <input type="date" id="leave-report-end-date" class="w-full px-3 py-2 border border-slate-300 rounded-md text-sm">
+                        </div>
+                        <div>
+                            <label for="leave-report-department-filter" class="block text-sm font-medium text-slate-700 mb-1">Department</label>
+                            <select id="leave-report-department-filter" class="w-full px-3 py-2 border border-slate-300 rounded-md text-sm">
+                                <option value="">All Departments</option>
+                                <!-- Options will be populated by JS -->
+                            </select>
+                        </div>
+                        <div>
+                            <label for="leave-report-type-filter" class="block text-sm font-medium text-slate-700 mb-1">Leave Type</label>
+                            <select id="leave-report-type-filter" class="w-full px-3 py-2 border border-slate-300 rounded-md text-sm">
+                                <option value="">All Leave Types</option>
+                                <!-- Options will be populated by JS -->
+                            </select>
+                        </div>
+                        <div>
+                            <button id="btn-generate-leave-report" class="w-full bg-blue-600 text-white px-4 py-2.5 rounded-lg hover:bg-blue-700 flex items-center justify-center space-x-2 text-sm font-medium">
+                                <i data-lucide="play" class="w-4 h-4"></i>
+                                <span>Generate Report</span>
+                            </button>
+                        </div>
+                    </div>
+                </div>
+
+                <!-- Report Results Section -->
+                <div id="leave-report-results-container" class="bg-white p-6 rounded-xl border border-slate-200 hidden">
+                    <div class="flex justify-between items-center mb-6">
+                        <div>
+                            <h2 class="text-xl font-bold text-slate-800">Report Results</h2>
+                            <p id="leave-report-summary-text" class="text-sm text-slate-500 mt-1">Summary for the selected period.</p>
+                        </div>
+                        <button id="btn-export-leave-report" class="bg-green-600 text-white px-4 py-2 rounded-lg hover:bg-green-700 flex items-center space-x-2 text-sm">
+                            <i data-lucide="file-spreadsheet" class="w-4 h-4"></i>
+                            <span>Export to Excel</span>
+                        </button>
+                    </div>
+                    <div class="overflow-x-auto">
+                        <table id="leave-report-table" class="w-full text-sm text-left text-slate-500">
+                            <thead class="text-xs text-slate-700 uppercase bg-slate-50">
+                                <tr>
+                                    <th scope="col" class="px-6 py-3">Employee</th>
+                                    <th scope="col" class="px-6 py-3">Leave Type</th>
+                                    <th scope="col" class="px-6 py-3">Start Date</th>
+                                    <th scope="col" class="px-6 py-3">End Date</th>
+                                    <th scope="col" class="px-6 py-3 text-center">Total Days</th>
+                                    <th scope="col" class="px-6 py-3">Reason</th>
+                                    <th scope="col" class="px-6 py-3">Status</th>
+                                </tr>
+                            </thead>
+                            <tbody id="leave-report-table-body">
+                                <!-- Report rows will be injected by JS -->
+                            </tbody>
+                        </table>
+                    </div>
+                </div>
+                
+                <div id="leave-report-placeholder" class="text-center py-16 bg-white rounded-xl border border-slate-200">
+                    <div class="flex justify-center mb-4">
+                        <div class="p-4 bg-slate-100 rounded-full text-slate-500">
+                            <i data-lucide="calendar-off" class="w-10 h-10"></i>
+                        </div>
+                    </div>
+                    <h3 class="text-lg font-semibold text-slate-700">Generate Your Leave Report</h3>
+                    <p class="text-sm text-slate-500 mt-1">Select your filters and click "Generate Report" to view data.</p>
+                </div>
+            </div>
+        </main>
+    </div>
+
+    <!-- Employee Profile Details Modal -->
+    <div id="profile-details-modal" class="fixed inset-0 bg-black bg-opacity-50 z-50 hidden items-center justify-center">
+        <div class="bg-white rounded-lg shadow-xl w-full max-w-2xl m-4">
+            <form id="profile-details-form">
+                <div class="p-6 border-b">
+                    <h3 id="profile-details-modal-title" class="text-xl font-semibold text-slate-800">Edit Employee Profile Details</h3>
+                </div>
+                <div class="p-6 max-h-[60vh] overflow-y-auto space-y-4">
+                    <input type="hidden" id="modal-profile-details-user-id">
+                    <div class="border-b border-slate-200 pb-4">
+                        <h4 class="text-md font-semibold text-slate-800 mb-2">Job Information</h4>
+                        <div class="grid grid-cols-1 md:grid-cols-2 gap-4">
+                             <div>
+                                <label for="modal-profile-position" class="block text-sm font-medium text-slate-700 mb-1">Position</label>
+                                <select id="modal-profile-position" class="w-full px-3 py-2 border border-slate-300 rounded-md text-sm"></select>
+                            </div>
+                            <div>
+                                <label for="modal-profile-department" class="block text-sm font-medium text-slate-700 mb-1">Department</label>
+                                <select id="modal-profile-department" class="w-full px-3 py-2 border border-slate-300 rounded-md text-sm"></select>
+                            </div>
+                            <div>
+                                <label for="modal-profile-employeeStatus" class="block text-sm font-medium text-slate-700 mb-1">Employee Status</label>
+                                <select id="modal-profile-employeeStatus" class="w-full px-3 py-2 border border-slate-300 rounded-md text-sm"></select>
+                            </div>
+                            <div>
+                                <label for="modal-profile-employeeLevel" class="block text-sm font-medium text-slate-700 mb-1">Employee Level</label>
+                                <select id="modal-profile-employeeLevel" class="w-full px-3 py-2 border border-slate-300 rounded-md text-sm">
+                                    <option value="">Loading levels...</option>
+                                </select>
+                            </div>
+                            <div>
+                                <label for="modal-profile-joinDate" class="block text-sm font-medium text-slate-700 mb-1">Join Date</label>
+                                <input type="date" id="modal-profile-joinDate" class="w-full px-3 py-2 border border-slate-300 rounded-md text-sm">
+                            </div>
+                            <div>
+                                <label for="modal-profile-employee-nik" class="block text-sm font-medium text-slate-700 mb-1">Employee ID (NIK)</label>
+                                <input type="text" id="modal-profile-employee-nik" class="w-full px-3 py-2 border border-slate-300 rounded-md text-sm" placeholder="e.g., 2024001">
+                            </div>
+                            <div>
+                                <label for="modal-profile-contractStartDate" class="block text-sm font-medium text-slate-700 mb-1">Contract Start Date</label>
+                                <input type="date" id="modal-profile-contractStartDate" class="w-full px-3 py-2 border border-slate-300 rounded-md text-sm">
+                            </div>
+                            <div>
+                                <label for="modal-profile-contractEndDate" class="block text-sm font-medium text-slate-700 mb-1">Contract End Date</label>
+                                <input type="date" id="modal-profile-contractEndDate" class="w-full px-3 py-2 border border-slate-300 rounded-md text-sm">
+                            </div>
+                            <div>
+                                <label for="modal-profile-leaveAdjustment" class="block text-sm font-medium text-slate-700 mb-1">Annual Leave Quota (days)</label>
+                                <input type="number" id="modal-profile-leaveAdjustment" class="w-full px-3 py-2 border border-slate-300 rounded-md text-sm" placeholder="Default: 12" min="0">
+                            </div>
+                            <div>
+                                <label for="modal-profile-supervisorId" class="block text-sm font-medium text-slate-700 mb-1">Direct Supervisor <span class="text-slate-400 font-normal">(Level 1 Approval)</span></label>
+                                <select id="modal-profile-supervisorId" class="w-full px-3 py-2 border border-slate-300 rounded-md text-sm">
+                                    <option value="">— No Supervisor —</option>
+                                </select>
+                            </div>
+                            <div>
+                                <label for="modal-profile-managerId" class="block text-sm font-medium text-slate-700 mb-1">Direct Manager <span class="text-slate-400 font-normal">(Final Approval / HR)</span></label>
+                                <select id="modal-profile-managerId" class="w-full px-3 py-2 border border-slate-300 rounded-md text-sm">
+                                    <option value="">— No Manager —</option>
+                                </select>
+                            </div>
+                        </div>
+                    </div>
+                    
+                    <div class="grid grid-cols-1 md:grid-cols-2 gap-4">
+                        <div>
+                            <label for="modal-profile-fullName" class="block text-sm font-medium text-slate-700 mb-1">Full Name</label>
+                            <input type="text" id="modal-profile-fullName" class="w-full px-3 py-2 border border-slate-300 rounded-md text-sm">
+                        </div>
+                        <div>
+                            <label for="modal-profile-phoneNumber" class="block text-sm font-medium text-slate-700 mb-1">Phone Number</label>
+                            <input type="tel" id="modal-profile-phoneNumber" class="w-full px-3 py-2 border border-slate-300 rounded-md text-sm">
+                        </div>
+                    </div>
+
+                    <div class="grid grid-cols-1 md:grid-cols-2 gap-4">
+                        <div>
+                            <label for="modal-profile-dateOfBirth" class="block text-sm font-medium text-slate-700 mb-1">Date of Birth</label>
+                            <input type="date" id="modal-profile-dateOfBirth" class="w-full px-3 py-2 border border-slate-300 rounded-md text-sm">
+                        </div>
+                        <div>
+                            <label for="modal-profile-gender" class="block text-sm font-medium text-slate-700 mb-1">Gender</label>
+                            <select id="modal-profile-gender" class="w-full px-3 py-2 border border-slate-300 rounded-md text-sm">
+                                <option value="">Select...</option>
+                                <option value="Laki-laki">Male</option>
+                                <option value="Perempuan">Female</option>
+                            </select>
+                        </div>
+                    </div>
+
+                    <div class="grid grid-cols-1 md:grid-cols-2 gap-4">
+                        <div>
+                            <label for="modal-profile-religion" class="block text-sm font-medium text-slate-700 mb-1">Religion</label>
+                            <input type="text" id="modal-profile-religion" class="w-full px-3 py-2 border border-slate-300 rounded-md text-sm">
+                        </div>
+                        <div>
+                            <label for="modal-profile-maritalStatus" class="block text-sm font-medium text-slate-700 mb-1">Marital Status</label>
+                            <select id="modal-profile-maritalStatus" class="w-full px-3 py-2 border border-slate-300 rounded-md text-sm">
+                                <option value="">Loading statuses...</option>
+                            </select>
+                        </div>
+                    </div>
+
+                    <div>
+                        <label for="modal-profile-address" class="block text-sm font-medium text-slate-700 mb-1">Address</label>
+                        <textarea id="modal-profile-address" rows="3" class="w-full px-3 py-2 border border-slate-300 rounded-md text-sm"></textarea>
+                    </div>
+
+                    <div class="border-t border-slate-200 pt-4">
+                        <h4 class="text-md font-semibold text-slate-800 mb-2">Emergency Contact</h4>
+                        <div class="grid grid-cols-1 md:grid-cols-2 gap-4">
+                            <div>
+                                <label for="modal-profile-emergencyContactName" class="block text-sm font-medium text-slate-700 mb-1">Contact Name</label>
+                                <input type="text" id="modal-profile-emergencyContactName" class="w-full px-3 py-2 border border-slate-300 rounded-md text-sm">
+                            </div>
+                            <div>
+                                <label for="modal-profile-emergencyContactPhone" class="block text-sm font-medium text-slate-700 mb-1">Contact Phone Number</label>
+                                <input type="tel" id="modal-profile-emergencyContactPhone" class="w-full px-3 py-2 border border-slate-300 rounded-md text-sm">
+                            </div>
+                        </div>
+                    </div>
+
+                </div>
+                <div class="p-4 bg-slate-50 border-t flex justify-end space-x-2">
+                    <button type="button" id="btn-cancel-profile-details-modal" class="bg-white border border-slate-300 px-4 py-2 rounded-md text-sm font-semibold text-slate-700 hover:bg-slate-50">Cancel</button>
+                    <button type="submit" class="bg-blue-600 text-white px-4 py-2 rounded-md text-sm font-semibold hover:bg-blue-700">Save Changes</button>
+                </div>
+            </form>
+        </div>
+    </div>
+    
+    <!-- Add/Edit Employee Modal -->
+    <div id="add-employee-modal" class="fixed inset-0 bg-black bg-opacity-50 z-50 hidden items-center justify-center">
+        <div class="bg-white rounded-lg shadow-xl w-full max-w-2xl m-4">
+            <form id="add-employee-form">
+                <div class="p-6 border-b">
+                    <h3 id="add-employee-modal-title" class="text-xl font-semibold text-slate-800">Add New Employee</h3>
+                </div>
+                <div class="p-6 max-h-[70vh] overflow-y-auto space-y-4">
+                    <!-- Basic Info: Email, Password -->
+                    <div class="grid grid-cols-1 md:grid-cols-2 gap-4">
+                        <div>
+                            <label for="employee-email" class="block text-sm font-medium text-slate-700 mb-1">Email</label>
+                            <input type="email" id="employee-email" class="w-full px-3 py-2 border border-slate-300 rounded-md text-sm" required>
+                        </div>
+                        <div>
+                            <label for="employee-password" class="block text-sm font-medium text-slate-700 mb-1">Password</label>
+                            <input type="password" id="employee-password" class="w-full px-3 py-2 border border-slate-300 rounded-md text-sm" required minlength="6">
+                        </div>
+                    </div>
+
+                    <div class="border-t border-slate-200 pt-4">
+                        <h4 class="text-md font-semibold text-slate-800 mb-2">Job Information</h4>
+                        <div class="grid grid-cols-1 md:grid-cols-2 gap-4">
+                            <div>
+                                <label for="employee-position" class="block text-sm font-medium text-slate-700 mb-1">Position</label>
+                                <select id="employee-position" class="w-full px-3 py-2 border border-slate-300 rounded-md text-sm">
+                                    <option value="">Loading positions...</option>
+                                </select>
+                            </div>
+                            <div>
+                                <label for="employee-department" class="block text-sm font-medium text-slate-700 mb-1">Department</label>
+                                <select id="employee-department" class="w-full px-3 py-2 border border-slate-300 rounded-md text-sm">
+                                    <option value="">Loading departments...</option>
+                                </select>
+                            </div>
+                            <div>
+                                <label for="employee-status" class="block text-sm font-medium text-slate-700 mb-1">Employee Status</label>
+                                <select id="employee-status" class="w-full px-3 py-2 border border-slate-300 rounded-md text-sm">
+                                    <option value="">Loading statuses...</option>
+                                </select>
+                            </div>
+                            <div>
+                                <label for="employee-level" class="block text-sm font-medium text-slate-700 mb-1">Employee Level</label>
+                                <select id="employee-level" class="w-full px-3 py-2 border border-slate-300 rounded-md text-sm">
+                                    <option value="">Loading levels...</option>
+                                </select>
+                            </div>
+                            <div>
+                                <label for="employee-joinDate" class="block text-sm font-medium text-slate-700 mb-1">Join Date</label>
+                                <input type="date" id="employee-joinDate" class="w-full px-3 py-2 border border-slate-300 rounded-md text-sm">
+                            </div>
+                            <div>
+                                <label for="employee-nik" class="block text-sm font-medium text-slate-700 mb-1">Employee ID (NIK)</label>
+                                <input type="text" id="employee-nik" class="w-full px-3 py-2 border border-slate-300 rounded-md text-sm" placeholder="e.g., 2024001">
+                            </div>
+                            <div>
+                                <label for="employee-contractStartDate" class="block text-sm font-medium text-slate-700 mb-1">Contract Start Date</label>
+                                <input type="date" id="employee-contractStartDate" class="w-full px-3 py-2 border border-slate-300 rounded-md text-sm">
+                            </div>
+                            <div>
+                                <label for="employee-contractEndDate" class="block text-sm font-medium text-slate-700 mb-1">Contract End Date</label>
+                                <input type="date" id="employee-contractEndDate" class="w-full px-3 py-2 border border-slate-300 rounded-md text-sm">
+                            </div>
+                            <div>
+                                <label for="employee-leaveAdjustment" class="block text-sm font-medium text-slate-700 mb-1">Annual Leave Quota (days)</label>
+                                <input type="number" id="employee-leaveAdjustment" class="w-full px-3 py-2 border border-slate-300 rounded-md text-sm" placeholder="Default: 12" min="0">
+                            </div>
+                        </div>
+                    </div>
+
+                    <div class="border-t border-slate-200 pt-4">
+                        <h4 class="text-md font-semibold text-slate-800 mb-2">Personal Details</h4>
+                    </div>
+                    
+                    <!-- Profile Details -->
+                    <div class="grid grid-cols-1 md:grid-cols-2 gap-4">
+                        <div>
+                            <label for="employee-fullName" class="block text-sm font-medium text-slate-700 mb-1">Full Name</label>
+                            <input type="text" id="employee-fullName" class="w-full px-3 py-2 border border-slate-300 rounded-md text-sm" required>
+                        </div>
+                        <div>
+                            <label for="employee-phoneNumber" class="block text-sm font-medium text-slate-700 mb-1">Phone Number</label>
+                            <input type="tel" id="employee-phoneNumber" class="w-full px-3 py-2 border border-slate-300 rounded-md text-sm">
+                        </div>
+                    </div>
+
+                    <div class="grid grid-cols-1 md:grid-cols-2 gap-4">
+                        <div>
+                            <label for="employee-dateOfBirth" class="block text-sm font-medium text-slate-700 mb-1">Date of Birth</label>
+                            <input type="date" id="employee-dateOfBirth" class="w-full px-3 py-2 border border-slate-300 rounded-md text-sm">
+                        </div>
+                        <div>
+                            <label for="employee-gender" class="block text-sm font-medium text-slate-700 mb-1">Gender</label>
+                            <select id="employee-gender" class="w-full px-3 py-2 border border-slate-300 rounded-md text-sm">
+                                <option value="">Select...</option>
+                                <option value="Laki-laki">Male</option>
+                                <option value="Perempuan">Female</option>
+                            </select>
+                        </div>
+                    </div>
+
+                    <div class="grid grid-cols-1 md:grid-cols-2 gap-4">
+                        <div>
+                            <label for="employee-religion" class="block text-sm font-medium text-slate-700 mb-1">Religion</label>
+                            <input type="text" id="employee-religion" class="w-full px-3 py-2 border border-slate-300 rounded-md text-sm">
+                        </div>
+                        <div>
+                            <label for="employee-maritalStatus" class="block text-sm font-medium text-slate-700 mb-1">Marital Status</label>
+                            <select id="employee-maritalStatus" class="w-full px-3 py-2 border border-slate-300 rounded-md text-sm">
+                                <option value="">Loading statuses...</option>
+                            </select>
+                        </div>
+                    </div>
+
+                    <div>
+                        <label for="employee-address" class="block text-sm font-medium text-slate-700 mb-1">Address</label>
+                        <textarea id="employee-address" rows="3" class="w-full px-3 py-2 border border-slate-300 rounded-md text-sm"></textarea>
+                    </div>
+
+                    <div class="border-t border-slate-200 pt-4">
+                        <h4 class="text-md font-semibold text-slate-800 mb-2">Emergency Contact</h4>
+                        <div class="grid grid-cols-1 md:grid-cols-2 gap-4">
+                            <div>
+                                <label for="employee-emergencyContactName" class="block text-sm font-medium text-slate-700 mb-1">Contact Name</label>
+                                <input type="text" id="employee-emergencyContactName" class="w-full px-3 py-2 border border-slate-300 rounded-md text-sm">
+                            </div>
+                            <div>
+                                <label for="employee-emergencyContactPhone" class="block text-sm font-medium text-slate-700 mb-1">Contact Phone Number</label>
+                                <input type="tel" id="employee-emergencyContactPhone" class="w-full px-3 py-2 border border-slate-300 rounded-md text-sm">
+                            </div>
+                        </div>
+                    </div>
+                </div>
+                <div class="p-4 bg-slate-50 border-t flex justify-end space-x-2">
+                    <button type="button" id="btn-cancel-add-employee-modal" class="bg-white border border-slate-300 px-4 py-2 rounded-md text-sm font-semibold text-slate-700 hover:bg-slate-50">Cancel</button>
+                    <button type="submit" class="bg-blue-600 text-white px-4 py-2 rounded-md text-sm font-semibold hover:bg-blue-700">Create Employee</button>
+                </div>
+            </form>
+        </div>
+    </div>
+
+    <!-- Add/Edit Role Modal -->
+    <div id="role-modal" class="fixed inset-0 bg-black bg-opacity-50 z-50 hidden items-center justify-center">
+        <div class="bg-white rounded-lg shadow-xl w-full max-w-lg m-4">
+            <form id="role-form">
+                <div class="p-6 border-b">
+                    <h3 id="role-modal-title" class="text-xl font-semibold text-slate-800">Add New Role</h3>
+                </div>
+                <div class="p-6 max-h-[60vh] overflow-y-auto space-y-6">
+                    <input type="hidden" id="role-id">
+                    <div>
+                        <label for="role-name" class="block text-sm font-medium text-slate-700 mb-1">Role Name</label>
+                        <input type="text" id="role-name" class="w-full px-3 py-2 border border-slate-300 rounded-md text-sm" required placeholder="Example: HRD">
+                    </div>
+                    <div>
+                        <label class="block text-sm font-medium text-slate-700 mb-2">Permissions</label>
+                        <div id="role-permissions-container" class="space-y-3">
+                            <!-- Checkboxes will be injected by JS -->
+                            <p class="text-sm text-slate-400">Loading permissions list...</p>
+                        </div>
+                    </div>
+                </div>
+                <div class="p-4 bg-slate-50 border-t flex justify-end space-x-2">
+                    <button type="button" id="btn-cancel-role-modal" class="bg-white border border-slate-300 px-4 py-2 rounded-md text-sm font-semibold text-slate-700 hover:bg-slate-50">Cancel</button>
+                    <button type="submit" class="bg-blue-600 text-white px-4 py-2 rounded-md text-sm font-semibold hover:bg-blue-700">Save</button>
+                </div>
+            </form>
+        </div>
+    </div>
+
+    <!-- Add/Edit Position Modal -->
+    <div id="position-modal" class="fixed inset-0 bg-black bg-opacity-50 z-50 hidden items-center justify-center">
+        <div class="bg-white rounded-lg shadow-xl w-full max-w-md m-4">
+            <form id="position-form">
+                <div class="p-6 border-b">
+                    <h3 id="position-modal-title" class="text-xl font-semibold text-slate-800">Add New Position</h3>
+                </div>
+                <div class="p-6 space-y-4">
+                    <input type="hidden" id="position-id">
+                    <div>
+                        <label for="position-name" class="block text-sm font-medium text-slate-700 mb-1">Position Name</label>
+                        <input type="text" id="position-name" class="w-full px-3 py-2 border border-slate-300 rounded-md text-sm" required placeholder="Example: Front Desk Agent">
+                    </div>
+                </div>
+                <div class="p-4 bg-slate-50 border-t flex justify-end space-x-2">
+                    <button type="button" id="btn-cancel-position-modal" class="bg-white border border-slate-300 px-4 py-2 rounded-md text-sm font-semibold text-slate-700 hover:bg-slate-50">Cancel</button>
+                    <button type="submit" class="bg-blue-600 text-white px-4 py-2 rounded-md text-sm font-semibold hover:bg-blue-700">Save</button>
+                </div>
+            </form>
+        </div>
+    </div>
+
+    <!-- Add/Edit Department Modal -->
+    <div id="department-modal" class="fixed inset-0 bg-black bg-opacity-50 z-50 hidden items-center justify-center">
+        <div class="bg-white rounded-lg shadow-xl w-full max-w-md m-4">
+            <form id="department-form">
+                <div class="p-6 border-b">
+                    <h3 id="department-modal-title" class="text-xl font-semibold text-slate-800">Add New Department</h3>
+                </div>
+                <div class="p-6 space-y-4">
+                    <input type="hidden" id="department-id">
+                    <div>
+                        <label for="department-name" class="block text-sm font-medium text-slate-700 mb-1">Department Name</label>
+                        <input type="text" id="department-name" class="w-full px-3 py-2 border border-slate-300 rounded-md text-sm" required placeholder="Example: Front Office">
+                    </div>
+                </div>
+                <div class="p-4 bg-slate-50 border-t flex justify-end space-x-2">
+                    <button type="button" id="btn-cancel-department-modal" class="bg-white border border-slate-300 px-4 py-2 rounded-md text-sm font-semibold text-slate-700 hover:bg-slate-50">Cancel</button>
+                    <button type="submit" class="bg-blue-600 text-white px-4 py-2 rounded-md text-sm font-semibold hover:bg-blue-700">Save</button>
+                </div>
+            </form>
+        </div>
+    </div>
+
+    <!-- Add/Edit Work Schedule Modal -->
+    <div id="work-schedule-modal" class="fixed inset-0 bg-black bg-opacity-50 z-50 hidden items-center justify-center">
+        <div class="bg-white rounded-lg shadow-xl w-full max-w-md m-4">
+            <form id="work-schedule-form">
+                <div class="p-6 border-b">
+                    <h3 id="work-schedule-modal-title" class="text-xl font-semibold text-slate-800">Add New Work Schedule</h3>
+                </div>
+                <div class="p-6 space-y-4">
+                    <input type="hidden" id="work-schedule-id">
+                    <div>
+                        <label for="work-schedule-code" class="block text-sm font-medium text-slate-700 mb-1">Schedule Code</label>
+                        <input type="text" id="work-schedule-code" class="w-full px-3 py-2 border border-slate-300 rounded-md text-sm" required placeholder="Example: M7">
+                    </div>
+                    <div>
+                        <label for="work-schedule-name" class="block text-sm font-medium text-slate-700 mb-1">Schedule Name</label>
+                        <input type="text" id="work-schedule-name" class="w-full px-3 py-2 border border-slate-300 rounded-md text-sm" required placeholder="Example: Morning 07:00am">
+                    </div>
+                    <div class="grid grid-cols-2 gap-4">
+                        <div>
+                            <label for="work-schedule-start-time" class="block text-sm font-medium text-slate-700 mb-1">Start Time</label>
+                            <input type="time" id="work-schedule-start-time" class="w-full px-3 py-2 border border-slate-300 rounded-md text-sm" required>
+                        </div>
+                        <div>
+                            <label for="work-schedule-end-time" class="block text-sm font-medium text-slate-700 mb-1">End Time</label>
+                            <input type="time" id="work-schedule-end-time" class="w-full px-3 py-2 border border-slate-300 rounded-md text-sm" required>
+                        </div>
+                    </div>
+                </div>
+                <div class="p-4 bg-slate-50 border-t flex justify-end space-x-2">
+                    <button type="button" id="btn-cancel-work-schedule-modal" class="bg-white border border-slate-300 px-4 py-2 rounded-md text-sm font-semibold text-slate-700 hover:bg-slate-50">Cancel</button>
+                    <button type="submit" class="bg-blue-600 text-white px-4 py-2 rounded-md text-sm font-semibold hover:bg-blue-700">Save</button>
+                </div>
+            </form>
+        </div>
+    </div>
+
+    <!-- Add/Edit Employee Status Modal -->
+    <div id="employee-status-modal" class="fixed inset-0 bg-black bg-opacity-50 z-50 hidden items-center justify-center">
+        <div class="bg-white rounded-lg shadow-xl w-full max-w-md m-4">
+            <form id="employee-status-form">
+                <div class="p-6 border-b">
+                    <h3 id="employee-status-modal-title" class="text-xl font-semibold text-slate-800">Add New Employee Status</h3>
+                </div>
+                <div class="p-6 space-y-4">
+                    <input type="hidden" id="employee-status-id">
+                    <div>
+                        <label for="employee-status-name" class="block text-sm font-medium text-slate-700 mb-1">Status Name</label>
+                        <input type="text" id="employee-status-name" class="w-full px-3 py-2 border border-slate-300 rounded-md text-sm" required placeholder="Example: PKWT">
+                    </div>
+                    <div>
+                        <label for="employee-status-description" class="block text-sm font-medium text-slate-700 mb-1">Description</label>
+                        <textarea id="employee-status-description" rows="3" class="w-full px-3 py-2 border border-slate-300 rounded-md text-sm" placeholder="Example: Perjanjian Kerja Waktu Tertentu"></textarea>
+                    </div>
+                </div>
+                <div class="p-4 bg-slate-50 border-t flex justify-end space-x-2">
+                    <button type="button" id="btn-cancel-employee-status-modal" class="bg-white border border-slate-300 px-4 py-2 rounded-md text-sm font-semibold text-slate-700 hover:bg-slate-50">Cancel</button>
+                    <button type="submit" class="bg-blue-600 text-white px-4 py-2 rounded-md text-sm font-semibold hover:bg-blue-700">Save</button>
+                </div>
+            </form>
+        </div>
+    </div>
+
+    <!-- Add/Edit Employee Level Modal -->
+    <div id="employee-level-modal" class="fixed inset-0 bg-black bg-opacity-50 z-50 hidden items-center justify-center">
+        <div class="bg-white rounded-lg shadow-xl w-full max-w-md m-4">
+            <form id="employee-level-form">
+                <div class="p-6 border-b">
+                    <h3 id="employee-level-modal-title" class="text-xl font-semibold text-slate-800">Add New Employee Level</h3>
+                </div>
+                <div class="p-6 space-y-4">
+                    <input type="hidden" id="employee-level-id">
+                    <div>
+                        <label for="employee-level-name" class="block text-sm font-medium text-slate-700 mb-1">Level Name</label>
+                        <input type="text" id="employee-level-name" class="w-full px-3 py-2 border border-slate-300 rounded-md text-sm" required placeholder="Example: Level 1 (Staff)">
+                    </div>
+                    <div>
+                        <label for="employee-level-description" class="block text-sm font-medium text-slate-700 mb-1">Description</label>
+                        <textarea id="employee-level-description" rows="3" class="w-full px-3 py-2 border border-slate-300 rounded-md text-sm" placeholder="A short description of the level."></textarea>
+                    </div>
+                </div>
+                <div class="p-4 bg-slate-50 border-t flex justify-end space-x-2">
+                    <button type="button" id="btn-cancel-employee-level-modal" class="bg-white border border-slate-300 px-4 py-2 rounded-md text-sm font-semibold text-slate-700 hover:bg-slate-50">Cancel</button>
+                    <button type="submit" class="bg-blue-600 text-white px-4 py-2 rounded-md text-sm font-semibold hover:bg-blue-700">Save</button>
+                </div>
+            </form>
+        </div>
+    </div>
+
+    <!-- Add/Edit Marital Status Modal -->
+    <div id="marital-status-modal" class="fixed inset-0 bg-black bg-opacity-50 z-50 hidden items-center justify-center">
+        <div class="bg-white rounded-lg shadow-xl w-full max-w-md m-4">
+            <form id="marital-status-form">
+                <div class="p-6 border-b">
+                    <h3 id="marital-status-modal-title" class="text-xl font-semibold text-slate-800">Add New Marital Status</h3>
+                </div>
+                <div class="p-6 space-y-4">
+                    <input type="hidden" id="marital-status-id">
+                    <div>
+                        <label for="marital-status-name" class="block text-sm font-medium text-slate-700 mb-1">Status Code</label>
+                        <input type="text" id="marital-status-name" class="w-full px-3 py-2 border border-slate-300 rounded-md text-sm" required placeholder="Example: K/1">
+                    </div>
+                    <div>
+                        <label for="marital-status-description" class="block text-sm font-medium text-slate-700 mb-1">Description</label>
+                        <textarea id="marital-status-description" rows="3" class="w-full px-3 py-2 border border-slate-300 rounded-md text-sm" placeholder="Example: Married with 1 Child"></textarea>
+                    </div>
+                </div>
+                <div class="p-4 bg-slate-50 border-t flex justify-end space-x-2">
+                    <button type="button" id="btn-cancel-marital-status-modal" class="bg-white border border-slate-300 px-4 py-2 rounded-md text-sm font-semibold text-slate-700 hover:bg-slate-50">Cancel</button>
+                    <button type="submit" class="bg-blue-600 text-white px-4 py-2 rounded-md text-sm font-semibold hover:bg-blue-700">Save</button>
+                </div>
+            </form>
+        </div>
+    </div>
+
+    <!-- Add/Edit Absence Type Modal -->
+    <div id="absence-type-modal" class="fixed inset-0 bg-black bg-opacity-50 z-50 hidden items-center justify-center">
+        <div class="bg-white rounded-lg shadow-xl w-full max-w-md m-4">
+            <form id="absence-type-form">
+                <div class="p-6 border-b">
+                    <h3 id="absence-type-modal-title" class="text-xl font-semibold text-slate-800">Add New Absence Type</h3>
+                </div>
+                <div class="p-6 space-y-4">
+                    <input type="hidden" id="absence-type-id">
+                    <div>
+                        <label for="absence-type-code" class="block text-sm font-medium text-slate-700 mb-1">Code</label>
+                        <input type="text" id="absence-type-code" class="w-full px-3 py-2 border border-slate-300 rounded-md text-sm" required placeholder="e.g., AL">
+                    </div>
+                    <div>
+                        <label for="absence-type-name" class="block text-sm font-medium text-slate-700 mb-1">Name</label>
+                        <input type="text" id="absence-type-name" class="w-full px-3 py-2 border border-slate-300 rounded-md text-sm" required placeholder="e.g., Annual Leave">
+                    </div>
+                    <div>
+                        <label for="absence-type-description" class="block text-sm font-medium text-slate-700 mb-1">Description</label>
+                        <textarea id="absence-type-description" rows="2" class="w-full px-3 py-2 border border-slate-300 rounded-md text-sm" placeholder="A short description."></textarea>
+                    </div>
+                    <div>
+                        <label for="absence-type-category" class="block text-sm font-medium text-slate-700 mb-1">Category</label>
+                        <select id="absence-type-category" class="w-full px-3 py-2 border border-slate-300 rounded-md text-sm" required>
+                            <option value="leave">Leave</option>
+                            <option value="off_day">Day Off</option>
+                            <option value="holiday">Public Holiday</option>
+                            <option value="other">Other</option>
+                        </select>
+                    </div>
+                </div>
+                <div class="p-4 bg-slate-50 border-t flex justify-end space-x-2">
+                    <button type="button" id="btn-cancel-absence-type-modal" class="bg-white border border-slate-300 px-4 py-2 rounded-md text-sm font-semibold text-slate-700 hover:bg-slate-50">Cancel</button>
+                    <button type="submit" class="bg-blue-600 text-white px-4 py-2 rounded-md text-sm font-semibold hover:bg-blue-700">Save</button>
+                </div>
+            </form>
+        </div>
+    </div>
+
+    <!-- Add/Edit User Modal -->
+    <div id="user-modal" class="fixed inset-0 bg-black bg-opacity-50 z-50 hidden items-center justify-center">
+        <div class="bg-white rounded-lg shadow-xl w-full max-w-md m-4">
+            <form id="user-form">
+                <div class="p-6 border-b">
+                    <h3 id="user-modal-title" class="text-xl font-semibold text-slate-800">Add New User</h3>
+                </div>
+                <div class="p-6 space-y-4">
+                    <input type="hidden" id="user-id">
+                    <div>
+                        <label for="user-username" class="block text-sm font-medium text-slate-700 mb-1">Username</label>
+                        <input type="text" id="user-username" class="w-full px-3 py-2 border border-slate-300 rounded-md text-sm" required>
+                    </div>
+                    <div>
+                        <label for="user-email" class="block text-sm font-medium text-slate-700 mb-1">Email</label>
+                        <input type="email" id="user-email" class="w-full px-3 py-2 border border-slate-300 rounded-md text-sm" required>
+                    </div>
+                    <div>
+                        <label for="user-password" class="block text-sm font-medium text-slate-700 mb-1">Password</label>
+                        <input type="password" id="user-password" class="w-full px-3 py-2 border border-slate-300 rounded-md text-sm">
+                        <p id="password-hint" class="text-xs text-slate-500 mt-1">Leave blank if you don't want to change the password.</p>
+                    </div>
+                    <div>
+                        <label for="user-role" class="block text-sm font-medium text-slate-700 mb-1">Role</label>
+                        <select id="user-role" class="w-full px-3 py-2 border border-slate-300 rounded-md text-sm" required>
+                            <option value="user">User</option>
+                            <option value="admin">Admin</option>
+                        </select>
+                    </div>
+                </div>
+                <div class="p-4 bg-slate-50 border-t flex justify-end space-x-2">
+                    <button type="button" id="btn-cancel-user-modal" class="bg-white border border-slate-300 px-4 py-2 rounded-md text-sm font-semibold text-slate-700 hover:bg-slate-50">Cancel</button>
+                    <button type="submit" class="bg-blue-600 text-white px-4 py-2 rounded-md text-sm font-semibold hover:bg-blue-700">Save</button>
+                </div>
+            </form>
+        </div>
+    </div>
+
+    <!-- Profile Settings Modal -->
+    <div id="profile-modal" class="fixed inset-0 bg-black bg-opacity-50 z-50 hidden items-center justify-center">
+        <div class="bg-white rounded-lg shadow-xl w-full max-w-md m-4">
+            <form id="profile-form">
+                <div class="p-6 border-b">
+                    <h3 id="profile-modal-title" class="text-xl font-semibold text-slate-800">Profile Settings</h3>
+                </div>
+                <div class="p-6 space-y-4">
+                    <!-- Avatar/Photo Upload -->
+                    <div class="flex items-center space-x-4">
+                        <img id="profile-avatar-preview" src="https://images.unsplash.com/photo-1580489944761-15a19d654956?auto=format&fit=crop&w=80&h=80&q=80" alt="Admin Avatar" class="w-16 h-16 rounded-full object-cover">
+                        <div>
+                            <label for="profile-avatar-upload" class="cursor-pointer bg-slate-100 hover:bg-slate-200 text-slate-700 text-sm font-semibold px-4 py-2 rounded-md">
+                                Change Photo
+                            </label>
+                            <input type="file" id="profile-avatar-upload" class="hidden" accept="image/*">
+                        </div>
+                    </div>
+
+                    <!-- Role Display -->
+                    <div>
+                        <label for="profile-role" class="block text-sm font-medium text-slate-700 mb-1">Your Role</label>
+                        <p id="profile-role" class="w-full px-3 py-2 bg-slate-100 border border-slate-200 rounded-md text-sm text-slate-600 capitalize"></p>
+                    </div>
+
+                    <!-- Password Change -->
+                    <div>
+                        <label for="profile-password" class="block text-sm font-medium text-slate-700 mb-1">New Password</label>
+                        <input type="password" id="profile-password" class="w-full px-3 py-2 border border-slate-300 rounded-md text-sm" placeholder="Fill to change password" minlength="6">
+                    </div>
+                    <div>
+                        <label for="profile-password-confirm" class="block text-sm font-medium text-slate-700 mb-1">Confirm New Password</label>
+                        <input type="password" id="profile-password-confirm" class="w-full px-3 py-2 border border-slate-300 rounded-md text-sm">
+                    </div>
+                </div>
+                <div class="p-4 bg-slate-50 border-t flex justify-end space-x-2">
+                    <button type="button" id="btn-cancel-profile-modal" class="bg-white border border-slate-300 px-4 py-2 rounded-md text-sm font-semibold text-slate-700 hover:bg-slate-50">Cancel</button>
+                    <button type="submit" class="bg-blue-600 text-white px-4 py-2 rounded-md text-sm font-semibold hover:bg-blue-700">Save Changes</button>
+                </div>
+            </form>
+        </div>
+    </div>
+
+    <!-- Copy Schedule Modal -->
+    <div id="copy-schedule-modal" class="fixed inset-0 bg-black bg-opacity-50 z-50 hidden items-center justify-center">
+        <div class="bg-white rounded-lg shadow-xl w-full max-w-md m-4">
+            <form id="copy-schedule-form">
+                <div class="p-6 border-b">
+                    <h3 id="copy-schedule-modal-title" class="text-xl font-semibold text-slate-800">Copy Schedule</h3>
+                    <p id="copy-schedule-modal-subtitle" class="text-sm text-slate-500 mt-1"></p>
+                </div>
+                <div class="p-6 space-y-4">
+                    <input type="hidden" id="copy-schedule-source-user-id">
+                    <div>
+                        <label for="copy-schedule-search" class="block text-sm font-medium text-slate-700 mb-1">Search Target Employees</label>
+                        <input type="text" id="copy-schedule-search" class="w-full px-3 py-2 border border-slate-300 rounded-md text-sm" placeholder="Search by name...">
+                    </div>
+                    <div id="copy-schedule-target-list" class="max-h-60 overflow-y-auto space-y-2 border border-slate-200 rounded-md p-3">
+                        <!-- Target employees will be populated by JS -->
+                        <p class="text-slate-400 text-sm">Loading employees...</p>
+                    </div>
+                </div>
+                <div class="p-4 bg-slate-50 border-t flex justify-between items-center">
+                    <div>
+                        <label class="flex items-center">
+                            <input type="checkbox" id="copy-schedule-select-all" class="h-4 w-4 rounded border-gray-300 text-blue-600 focus:ring-blue-500">
+                            <span class="ml-2 text-sm font-medium text-slate-700">Select All</span>
+                        </label>
+                    </div>
+                    <div class="space-x-2">
+                        <button type="button" id="btn-cancel-copy-schedule-modal" class="bg-white border border-slate-300 px-4 py-2 rounded-md text-sm font-semibold text-slate-700 hover:bg-slate-50">Cancel</button>
+                        <button type="submit" class="bg-blue-600 text-white px-4 py-2 rounded-md text-sm font-semibold hover:bg-blue-700">Paste Schedule</button>
+                    </div>
+                </div>
+            </form>
+        </div>
+    </div>
+
+    <!-- Add/Edit Daily Schedule Modal -->
+    <div id="schedule-change-modal" class="fixed inset-0 bg-black bg-opacity-50 z-50 hidden items-center justify-center">
+        <div class="bg-white rounded-lg shadow-xl w-full max-w-sm m-4">
+            <form id="schedule-change-form">
+                <div class="p-6 border-b">
+                    <h3 id="schedule-change-modal-title" class="text-xl font-semibold text-slate-800">Change Schedule</h3>
+                    <p id="schedule-change-modal-subtitle" class="text-sm text-slate-500 mt-1"></p>
+                </div>
+                <div class="p-6 space-y-4">
+                    <input type="hidden" id="schedule-change-user-id">
+                    <input type="hidden" id="schedule-change-date">
+                    <div>
+                        <label for="schedule-change-select" class="block text-sm font-medium text-slate-700 mb-1">New Schedule</label>
+                        <select id="schedule-change-select" class="w-full px-3 py-2 border border-slate-300 rounded-md text-sm">
+                            <!-- Options will be populated by JS -->
+                            <option value="">Default Schedule</option>
+                            <optgroup label="Work Schedules"></optgroup>
+                            <optgroup label="Absence Types"></optgroup>
+                        </select>
+                    </div>
+                </div>
+                <div class="p-4 bg-slate-50 border-t flex justify-end space-x-2">
+                    <button type="button" id="btn-cancel-schedule-change-modal" class="bg-white border border-slate-300 px-4 py-2 rounded-md text-sm font-semibold text-slate-700 hover:bg-slate-50">Cancel</button>
+                    <button type="submit" class="bg-blue-600 text-white px-4 py-2 rounded-md text-sm font-semibold hover:bg-blue-700">Save</button>
+                </div>
+            </form>
+        </div>
+    </div>
+
+    <!-- Daily Attendance Log Modal -->
+    <div id="daily-log-modal" class="fixed inset-0 bg-black bg-opacity-50 z-50 hidden items-center justify-center">
+        <div class="bg-white rounded-lg shadow-xl w-full max-w-2xl m-4">
+            <div class="p-6 border-b flex justify-between items-center">
+                <div>
+                    <h3 id="daily-log-modal-title" class="text-xl font-semibold text-slate-800">Daily Attendance Log</h3>
+                    <p id="daily-log-modal-subtitle" class="text-sm text-slate-500 mt-1"></p>
+                </div>
+                <button id="btn-close-daily-log-modal" class="p-2 rounded-full hover:bg-slate-100">
+                    <i data-lucide="x" class="w-5 h-5 text-slate-600"></i>
+                </button>
+            </div>
+            <div id="daily-log-modal-body" class="p-6 max-h-[60vh] overflow-y-auto">
+                <!-- Log content will be injected here -->
+                <div class="text-center py-8">
+                    <div class="flex items-center justify-center text-slate-500">
+                        <i data-lucide="loader-2" class="animate-spin mr-2"></i>
+                        <span>Loading daily log...</span>
+                    </div>
+                </div>
+            </div>
+        </div>
+    </div>
+
+    <!-- Request Detail Modal -->
+    <div id="request-detail-modal" class="fixed inset-0 bg-black/50 z-50 hidden items-center justify-center p-4">
+        <div class="bg-white rounded-2xl shadow-2xl w-full max-w-lg max-h-[90vh] flex flex-col">
+            <div class="flex items-center justify-between px-6 py-4 border-b border-slate-100 shrink-0">
+                <h2 class="text-lg font-bold text-slate-800">Request Detail</h2>
+                <button id="request-detail-close-btn" class="text-slate-400 hover:text-slate-600 p-1 rounded-full hover:bg-slate-100">
+                    <i data-lucide="x" class="w-5 h-5"></i>
+                </button>
+            </div>
+            <div id="request-detail-body" class="p-6 space-y-4 overflow-y-auto flex-1">
+                <!-- populated by JS -->
+            </div>
+            <div id="request-detail-actions" class="px-6 py-4 border-t border-slate-100 shrink-0">
+                <!-- populated by JS -->
+            </div>
+        </div>
+    </div>
+
+    <!-- Bulk Import Employee Modal -->
+    <div id="bulk-import-modal" class="fixed inset-0 bg-black/50 z-50 hidden items-center justify-center p-4">
+        <div class="bg-white rounded-2xl shadow-2xl w-full max-w-3xl max-h-[90vh] flex flex-col">
+            <!-- Header -->
+            <div class="flex items-center justify-between px-6 py-4 border-b border-slate-100 shrink-0">
+                <div>
+                    <h2 class="text-lg font-bold text-slate-800">Bulk Import Employees</h2>
+                    <p class="text-sm text-slate-500 mt-0.5">Import multiple employees at once via Excel file.</p>
+                </div>
+                <button id="btn-close-bulk-import" class="text-slate-400 hover:text-slate-600 p-1 rounded-full hover:bg-slate-100">
+                    <i data-lucide="x" class="w-5 h-5"></i>
+                </button>
+            </div>
+
+            <!-- Step Indicator -->
+            <div class="flex items-center justify-center px-6 py-3 border-b border-slate-100 shrink-0 gap-3">
+                <div id="bulk-step-1-ind" class="flex items-center">
+                    <div class="w-7 h-7 rounded-full bg-blue-600 text-white flex items-center justify-center text-xs font-bold">1</div>
+                    <span class="ml-2 text-sm font-medium text-blue-700">Upload</span>
+                </div>
+                <div class="flex-1 h-px bg-slate-200 max-w-[60px]"></div>
+                <div id="bulk-step-2-ind" class="flex items-center opacity-40">
+                    <div class="w-7 h-7 rounded-full bg-slate-300 text-slate-600 flex items-center justify-center text-xs font-bold">2</div>
+                    <span class="ml-2 text-sm font-medium text-slate-500">Preview</span>
+                </div>
+                <div class="flex-1 h-px bg-slate-200 max-w-[60px]"></div>
+                <div id="bulk-step-3-ind" class="flex items-center opacity-40">
+                    <div class="w-7 h-7 rounded-full bg-slate-300 text-slate-600 flex items-center justify-center text-xs font-bold">3</div>
+                    <span class="ml-2 text-sm font-medium text-slate-500">Results</span>
+                </div>
+            </div>
+
+            <!-- Content Area -->
+            <div class="flex-1 overflow-y-auto">
+
+                <!-- Step 1: Upload -->
+                <div id="bulk-step-1" class="p-6 space-y-5">
+                    <div class="bg-blue-50 border border-blue-200 rounded-xl p-4">
+                        <p class="text-sm font-semibold text-blue-800 mb-1.5">How it works</p>
+                        <ol class="text-sm text-blue-700 space-y-1 list-decimal list-inside">
+                            <li>Download the template and fill in employee data</li>
+                            <li><strong>Full Name</strong> and <strong>Email</strong> are required per row</li>
+                            <li>Use exact names from the Reference sheet for Department, Position, etc.</li>
+                            <li>Upload and preview before confirming the import</li>
+                        </ol>
+                    </div>
+
+                    <div class="flex justify-center">
+                        <button id="btn-download-template" class="flex items-center space-x-2 px-5 py-3 border-2 border-dashed border-emerald-400 text-emerald-700 rounded-xl hover:bg-emerald-50 transition font-medium text-sm">
+                            <i data-lucide="download" class="w-5 h-5"></i>
+                            <span>Download Excel Template</span>
+                        </button>
+                    </div>
+
+                    <div>
+                        <label class="block text-sm font-medium text-slate-700 mb-2">Upload Filled Template</label>
+                        <label id="bulk-file-dropzone" class="flex flex-col items-center justify-center w-full h-36 border-2 border-dashed border-slate-300 rounded-xl cursor-pointer hover:bg-slate-50 transition">
+                            <i data-lucide="file-spreadsheet" class="w-10 h-10 text-slate-400 mb-2"></i>
+                            <p class="text-sm text-slate-600"><span class="font-semibold">Click to upload</span> or drag and drop</p>
+                            <p class="text-xs text-slate-400 mt-1">Excel files (.xlsx, .xls)</p>
+                            <input id="bulk-file-input" type="file" class="hidden" accept=".xlsx,.xls">
+                        </label>
+                        <div id="bulk-file-name" class="hidden mt-2 text-sm text-emerald-600 font-medium flex items-center space-x-1">
+                            <i data-lucide="check-circle" class="w-4 h-4 shrink-0"></i>
+                            <span id="bulk-file-name-text"></span>
+                        </div>
+                    </div>
+
+                    <div class="flex justify-end">
+                        <button id="btn-bulk-preview" class="hidden bg-blue-600 text-white px-6 py-2.5 rounded-lg hover:bg-blue-700 font-medium text-sm flex items-center space-x-2">
+                            <span>Preview Data</span>
+                            <i data-lucide="arrow-right" class="w-4 h-4"></i>
+                        </button>
+                    </div>
+                </div>
+
+                <!-- Step 2: Preview -->
+                <div id="bulk-step-2" class="hidden p-6 space-y-4">
+                    <div class="flex items-center justify-between">
+                        <p id="bulk-preview-summary" class="text-sm font-medium text-slate-700"></p>
+                        <button id="btn-bulk-back" class="text-sm text-slate-500 hover:text-slate-700 flex items-center space-x-1">
+                            <i data-lucide="arrow-left" class="w-4 h-4"></i>
+                            <span>Change File</span>
+                        </button>
+                    </div>
+
+                    <div class="overflow-x-auto rounded-xl border border-slate-200">
+                        <table class="w-full text-xs text-left">
+                            <thead class="bg-slate-50 text-slate-500 uppercase text-[10px] tracking-wide">
+                                <tr>
+                                    <th class="px-3 py-2.5">#</th>
+                                    <th class="px-3 py-2.5">NIK</th>
+                                    <th class="px-3 py-2.5">Full Name</th>
+                                    <th class="px-3 py-2.5">Email</th>
+                                    <th class="px-3 py-2.5">Department</th>
+                                    <th class="px-3 py-2.5">Position</th>
+                                    <th class="px-3 py-2.5">Status</th>
+                                </tr>
+                            </thead>
+                            <tbody id="bulk-preview-table-body" class="divide-y divide-slate-100"></tbody>
+                        </table>
+                    </div>
+                    <p id="bulk-preview-more" class="hidden text-xs text-slate-400 text-center italic"></p>
+
+                    <div class="flex justify-end pt-2">
+                        <button id="btn-confirm-bulk-import" class="bg-emerald-600 text-white px-6 py-2.5 rounded-lg hover:bg-emerald-700 font-medium text-sm flex items-center space-x-2">
+                            <i data-lucide="upload" class="w-4 h-4"></i>
+                            <span id="btn-confirm-bulk-text">Import Employees</span>
+                        </button>
+                    </div>
+                </div>
+
+                <!-- Step 3: Results -->
+                <div id="bulk-step-3" class="hidden p-6 space-y-5">
+                    <div class="grid grid-cols-2 gap-4">
+                        <div class="bg-emerald-50 border border-emerald-200 rounded-xl p-5 text-center">
+                            <div class="text-4xl font-bold text-emerald-600" id="bulk-success-count">0</div>
+                            <div class="text-sm text-emerald-700 mt-1 font-medium">Employees Created</div>
+                        </div>
+                        <div class="bg-red-50 border border-red-200 rounded-xl p-5 text-center">
+                            <div class="text-4xl font-bold text-red-500" id="bulk-error-count">0</div>
+                            <div class="text-sm text-red-700 mt-1 font-medium">Failed</div>
+                        </div>
+                    </div>
+
+                    <div id="bulk-errors-container" class="hidden">
+                        <p class="text-sm font-semibold text-slate-700 mb-2">Failed Rows</p>
+                        <div class="overflow-x-auto rounded-xl border border-slate-200">
+                            <table class="w-full text-xs text-left">
+                                <thead class="bg-red-50 text-red-700 text-[10px] uppercase tracking-wide">
+                                    <tr>
+                                        <th class="px-3 py-2.5">Row</th>
+                                        <th class="px-3 py-2.5">Name</th>
+                                        <th class="px-3 py-2.5">Email</th>
+                                        <th class="px-3 py-2.5">Reason</th>
+                                    </tr>
+                                </thead>
+                                <tbody id="bulk-errors-table-body" class="divide-y divide-slate-100"></tbody>
+                            </table>
+                        </div>
+                    </div>
+
+                    <div class="flex justify-end pt-2">
+                        <button id="btn-bulk-done" class="bg-blue-600 text-white px-6 py-2.5 rounded-lg hover:bg-blue-700 font-medium text-sm">
+                            Done
+                        </button>
+                    </div>
+                </div>
+
+            </div>
+        </div>
+    </div>
+
+    <script type="module" src="js/admin.js"></script>
+</body>
+</html>

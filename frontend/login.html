@@ -1,0 +1,71 @@
+<!DOCTYPE html>
+<html lang="id">
+<head>
+    <meta charset="UTF-8">
+    <meta name="viewport" content="width=device-width, initial-scale=1.0">
+    <link rel="icon" type="image/png" href="logo/logo.png">
+    <title>Login - Absensi App</title>
+    <script src="https://cdn.tailwindcss.com"></script>
+    <link rel="stylesheet" href="css/style.css"> <!-- Reusing some base styles -->
+</head>
+<body class="bg-slate-100 font-sans">
+
+    <div class="w-full min-h-screen grid grid-cols-1 md:grid-cols-3 bg-white">
+        <!-- Kolom Kiri: Gambar Ilustrasi -->
+        <div class="hidden md:block md:col-span-2">
+            <img src="https://hookedontech.com/wp-content/uploads/2019/10/faceapp-gans_resize_md.jpg" alt="Ilustrasi Absensi Online" class="w-full h-full object-cover">
+        </div>
+
+        <!-- Kolom Kanan: Form Login -->
+        <div class="flex flex-col justify-center p-8 sm:p-12 md:col-span-1">
+            <div class="w-full max-w-sm mx-auto">
+                <form id="login-form" class="w-full">
+                    <div class="mb-8 text-center">
+                        <div class="inline-flex items-center space-x-2 mb-2 relative -left-2">
+                            <img src="logo/logo.png" alt="Logo Perusahaan" class="h-10 w-auto">
+                            <h1 class="text-2xl font-bold text-gray-800">Accuransi Absensi</h1>
+                        </div>
+                        <p class="text-sm text-gray-500">Silakan masuk untuk melanjutkan</p>
+                    </div>
+                    
+                    <div id="error-message" class="bg-red-100 border border-red-400 text-red-700 px-4 py-3 rounded-2xl relative mb-6 hidden" role="alert">
+                        <strong class="font-bold">Gagal!</strong>
+                        <span class="block sm:inline">Kombinasi email dan password salah.</span>
+                    </div>
+
+                    <div class="mb-4">
+                        <label class="block text-gray-700 text-xs font-bold mb-2 uppercase tracking-wide" for="email">
+                            Email
+                        </label>
+                        <input class="shadow-inner appearance-none border-2 border-gray-200 rounded-2xl w-full py-3 px-4 text-gray-700 leading-tight focus:outline-none focus:bg-white focus:border-blue-500 transition-colors" id="email" type="email" required>
+                    </div>
+                    <div class="mb-6">
+                        <label class="block text-gray-700 text-xs font-bold mb-2 uppercase tracking-wide" for="password">
+                            Password
+                        </label>
+                        <div class="relative">
+                            <input class="shadow-inner appearance-none border-2 border-gray-200 rounded-2xl w-full py-3 px-4 text-gray-700 leading-tight focus:outline-none focus:bg-white focus:border-blue-500 transition-colors pr-10" id="password" type="password" required>
+                            <span class="absolute inset-y-0 right-0 pr-3 flex items-center">
+                                <svg id="togglePassword" class="h-6 w-6 text-gray-400 cursor-pointer" fill="none" stroke="currentColor" viewBox="0 0 24 24" xmlns="http://www.w3.org/2000/svg">
+                                    <path stroke-linecap="round" stroke-linejoin="round" stroke-width="2" d="M15 12a3 3 0 11-6 0 3 3 0 016 0z"></path>
+                                    <path stroke-linecap="round" stroke-linejoin="round" stroke-width="2" d="M2.458 12C3.732 7.943 7.523 5 12 5c4.478 0 8.268 2.943 9.542 7-1.274 4.057-5.064 7-9.542 7-4.477 0-8.268-2.943-9.542-7z"></path>
+                                </svg>
+                            </span>
+                        </div>
+                    </div>
+                    <div class="flex items-center justify-between mb-6">
+                        <button class="bg-blue-600 hover:bg-blue-700 text-white font-bold py-3 px-6 rounded-xl focus:outline-none focus:shadow-outline w-full shadow-lg shadow-blue-200 transition-colors" type="submit">
+                            Masuk
+                        </button>
+                    </div>
+                </form>
+                <p class="text-center text-gray-400 text-xs mt-8">
+                    &copy;2026 Accuransi Absensi Corp. All rights reserved.
+                </p>
+            </div>
+        </div>
+    </div>
+
+    <script src="js/login.js"></script>
+</body>
+</html>

@@ -1,0 +1,25 @@
+.no-scrollbar::-webkit-scrollbar { display: none; }
+.no-scrollbar { -ms-overflow-style: none; scrollbar-width: none; }
+.tap-active:active { transform: scale(0.95); }
+
+/* Gaya Peta Modal */
+#modal-map { height: 220px; width: 100%; border-radius: 1.25rem; z-index: 1; }
+
+/* Animasi Modal */
+@keyframes slideUp {
+    from { transform: translateY(100%); }
+    to { transform: translateY(0); }
+}
+.animate-slide-up { animation: slideUp 0.3s ease-out forwards; }
+
+/* Area View agar pas dengan layar mobile */
+.view-content {
+    height: 100%;
+    overflow-y: auto;
+    -webkit-overflow-scrolling: touch;
+}
+
+/* Pastikan bottom padding view cukup untuk nav + safe area iPhone */
+.view-content.pb-32 {
+    padding-bottom: calc(8rem + env(safe-area-inset-bottom, 0px));
+}

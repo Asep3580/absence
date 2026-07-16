@@ -1,0 +1,683 @@
+<!DOCTYPE html>
+<html lang="en">
+<head>
+    <meta charset="UTF-8">
+    <meta name="viewport" content="width=device-width, initial-scale=1.0">
+    <link rel="icon" type="image/png" href="logo/logo.png">
+    <title>SaaS Admin Dashboard</title>
+    <!-- Leaflet CSS and JS for map functionality -->
+    <link rel="stylesheet" href="https://unpkg.com/leaflet@1.9.4/dist/leaflet.css" />
+    <!-- Chart.js for charts -->
+    <script src="https://cdn.jsdelivr.net/npm/chart.js"></script>
+    <!-- html2pdf.js for client-side PDF generation -->
+    <script src="https://cdnjs.cloudflare.com/ajax/libs/html2pdf.js/0.10.1/html2pdf.bundle.min.js"></script>
+    <script src="https://unpkg.com/leaflet@1.9.4/dist/leaflet.js"></script>
+    <!-- Menggunakan Font Awesome untuk ikon -->
+    <link rel="stylesheet" href="https://cdnjs.cloudflare.com/ajax/libs/font-awesome/6.4.0/css/all.min.css">
+    <link rel="stylesheet" href="css/saas-admin.css">
+    <style>
+        @media print {
+            body * { visibility: hidden; }
+            #invoice-content, #invoice-content * { visibility: visible; }
+            #invoice-content {
+                position: absolute;
+                left: 0;
+                top: 0;
+                width: 100%;
+                margin: 0;
+            }
+        }
+    </style>
+</head>
+<body>
+    <div class="sidebar">
+        <div class="sidebar-header">
+            <h2>SaaS Admin</h2>
+        </div>
+        <ul class="menu">
+            <li class="menu-item active" data-target="dashboard"><i class="fas fa-tachometer-alt"></i> Dashboard</li>
+            <li class="menu-item" data-target="companies"><i class="fas fa-building"></i> Companies</li>
+            <li class="menu-item" data-target="corporates"><i class="fas fa-sitemap"></i> Corporates</li>
+            <li class="menu-item" data-target="billing"><i class="fas fa-file-invoice-dollar"></i> Billing</li>
+            <li class="menu-item" data-target="settings"><i class="fas fa-cog"></i> Settings</li>
+        </ul>
+        <div class="sidebar-footer">
+            <button id="logout-btn"><i class="fas fa-sign-out-alt"></i> Logout</button>
+        </div>
+    </div>
+
+    <div class="main-content">
+        <header>
+            <button id="sidebar-toggle" class="sidebar-toggle-btn"><i class="fas fa-bars"></i></button>
+            <h1 id="page-title">Dashboard</h1>
+        </header>
+
+        <main>
+            <!-- Konten Dashboard -->
+            <div id="dashboard" class="page-content active">
+                <div class="dashboard-cards">
+                    <div class="card">
+                        <div class="card-icon"><i class="fas fa-building"></i></div>
+                        <div class="card-info">
+                            <p>Total Companies</p>
+                            <h3 id="total-companies">0</h3>
+                        </div>
+                    </div>
+                    <div class="card">
+                        <div class="card-icon"><i class="fas fa-users"></i></div>
+                        <div class="card-info">
+                            <p>Total Active Employees</p>
+                            <h3 id="total-employees">0</h3>
+                        </div>
+                    </div>
+                    <div class="card">
+                        <div class="card-icon"><i class="fas fa-dollar-sign"></i></div>
+                        <div class="card-info">
+                            <p>Total Revenue</p>
+                            <h3 id="total-revenue">Rp 0</h3>
+                        </div>
+                    </div>
+                    <div class="card">
+                        <div class="card-icon"><i class="fas fa-file-invoice"></i></div>
+                        <div class="card-info">
+                            <p>Total Billing Unpaid</p>
+                            <h3 id="total-unpaid">0</h3>
+                        </div>
+                    </div>
+                </div>
+                <!-- Monthly Revenue Trend Chart -->
+                <div class="chart-container revenue-trend-section">
+                    <div class="chart-header">
+                        <div>
+                            <h2>Monthly Revenue</h2>
+                        </div>
+                    </div>
+                    <div class="chart-canvas-tall">
+                        <canvas id="revenue-trend-chart"></canvas>
+                    </div>
+                </div>
+
+                <!-- Chart and Recent Activity Section -->
+                <div class="dashboard-grid">
+                    <!-- Chart Container -->
+                    <div class="chart-container">
+                        <h2>New Companies per Month</h2>
+                        <div class="chart-canvas-wrapper">
+                            <canvas id="company-growth-chart"></canvas>
+                        </div>
+                    </div>
+                    <!-- Recent Companies List -->
+                    <div id="recent-companies-container" class="recent-companies-list">
+                        <h2>Recently Joined Companies</h2>
+                        <ul id="recent-companies-list">
+                            <!-- List items will be populated by JS -->
+                        </ul>
+                    </div>
+                </div>
+            </div>
+
+            <!-- Konten Companies -->
+            <div id="companies" class="page-content">
+                <div class="page-header">
+                    <div class="search-container">
+                        <input type="search" id="search-company-input" placeholder="Search by company name or admin email...">
+                    </div>
+                    <button id="add-company-btn" class="btn-primary"><i class="fas fa-plus"></i> Add New Company</button>
+                </div>
+                <div class="table-container">
+                    <table id="companies-table">
+                        <thead>
+                            <tr>
+                                <th>ID</th>
+                                <th class="sortable-header" data-sort-by="name">
+                                    <span>Company Name</span>
+                                    <i class="fas fa-sort sort-icon"></i>
+                                </th>
+                                <th>Active / Limit</th>
+                                <th>Monthly Bill</th>
+                                <th>Sub. Start</th>
+                                <th>Sub. End</th>
+                                <th class="sortable-header active" data-sort-by="created_at">
+                                    <span>Created At</span>
+                                    <i class="fas fa-sort-down sort-icon"></i>
+                                </th>
+                                <th>Admin Email</th>
+                                <th>No Whatsapp</th>
+                                <th>Actions</th>
+                            </tr>
+                        </thead>
+                        <tbody>
+                            <!-- Data perusahaan akan diisi oleh JavaScript -->
+                        </tbody>
+                    </table>
+                    <div id="companies-pagination-controls" class="pagination-controls"></div>
+                </div>
+            </div>
+
+            <!-- Konten Corporates -->
+            <div id="corporates" class="page-content">
+                <div class="page-header" style="display:flex;justify-content:space-between;align-items:center;margin-bottom:1rem;">
+                    <h2 style="font-size:1.25rem;font-weight:700;">Corporate Management</h2>
+                    <button id="add-corporate-btn" class="btn-primary" style="display:flex;align-items:center;gap:0.5rem;">
+                        <i class="fas fa-plus"></i> Add Corporate
+                    </button>
+                </div>
+                <div class="table-container">
+                    <table id="corporates-table" style="width:100%;border-collapse:collapse;">
+                        <thead>
+                            <tr style="background:#f8fafc;text-align:left;">
+                                <th style="padding:0.75rem 1rem;">Corporate Name</th>
+                                <th style="padding:0.75rem 1rem;">Admin</th>
+                                <th style="padding:0.75rem 1rem;text-align:center;">Hotels</th>
+                                <th style="padding:0.75rem 1rem;text-align:center;">Employees</th>
+                                <th style="padding:0.75rem 1rem;text-align:center;">Actions</th>
+                            </tr>
+                        </thead>
+                        <tbody id="corporates-table-body">
+                            <tr><td colspan="5" style="text-align:center;padding:2rem;color:#94a3b8;">Loading...</td></tr>
+                        </tbody>
+                    </table>
+                </div>
+            </div>
+
+            <!-- Modal Add/Edit Corporate -->
+            <div id="corporate-modal" style="display:none;position:fixed;inset:0;background:rgba(0,0,0,0.5);z-index:1000;align-items:center;justify-content:center;">
+                <div style="background:#fff;border-radius:1rem;padding:2rem;width:100%;max-width:480px;margin:1rem;">
+                    <div style="display:flex;justify-content:space-between;align-items:center;margin-bottom:1.5rem;">
+                        <h3 id="corporate-modal-title" style="font-size:1.1rem;font-weight:700;">Add Corporate</h3>
+                        <button id="close-corporate-modal-btn" style="background:none;border:none;font-size:1.25rem;cursor:pointer;color:#64748b;">&times;</button>
+                    </div>
+                    <form id="corporate-form" novalidate>
+                        <input type="hidden" id="corporate-id-field" value="">
+                        <div style="margin-bottom:1rem;">
+                            <label style="display:block;font-size:0.8rem;font-weight:600;margin-bottom:0.4rem;">Corporate Name *</label>
+                            <input type="text" id="corporate-name" required style="width:100%;border:1.5px solid #e2e8f0;border-radius:0.5rem;padding:0.6rem 0.75rem;font-size:0.9rem;box-sizing:border-box;">
+                        </div>
+                        <div style="margin-bottom:1rem;">
+                            <label style="display:block;font-size:0.8rem;font-weight:600;margin-bottom:0.4rem;">Address</label>
+                            <textarea id="corporate-address" rows="2" style="width:100%;border:1.5px solid #e2e8f0;border-radius:0.5rem;padding:0.6rem 0.75rem;font-size:0.9rem;box-sizing:border-box;resize:vertical;"></textarea>
+                        </div>
+                        <div id="corporate-admin-fields">
+                            <hr style="margin:1rem 0;border-color:#f1f5f9;">
+                            <p style="font-size:0.8rem;font-weight:700;color:#475569;margin-bottom:0.75rem;">Corporate Admin Account</p>
+                            <div style="margin-bottom:1rem;">
+                                <label style="display:block;font-size:0.8rem;font-weight:600;margin-bottom:0.4rem;">Full Name *</label>
+                                <input type="text" id="corporate-admin-username" required style="width:100%;border:1.5px solid #e2e8f0;border-radius:0.5rem;padding:0.6rem 0.75rem;font-size:0.9rem;box-sizing:border-box;">
+                            </div>
+                            <div style="margin-bottom:1rem;">
+                                <label style="display:block;font-size:0.8rem;font-weight:600;margin-bottom:0.4rem;">Email *</label>
+                                <input type="email" id="corporate-admin-email" required style="width:100%;border:1.5px solid #e2e8f0;border-radius:0.5rem;padding:0.6rem 0.75rem;font-size:0.9rem;box-sizing:border-box;">
+                            </div>
+                            <div style="margin-bottom:1rem;">
+                                <label style="display:block;font-size:0.8rem;font-weight:600;margin-bottom:0.4rem;">Password *</label>
+                                <input type="password" id="corporate-admin-password" required style="width:100%;border:1.5px solid #e2e8f0;border-radius:0.5rem;padding:0.6rem 0.75rem;font-size:0.9rem;box-sizing:border-box;">
+                            </div>
+                        </div>
+                        <div id="corporate-assign-section" style="display:none;">
+                            <hr style="margin:1rem 0;border-color:#f1f5f9;">
+                            <p style="font-size:0.8rem;font-weight:700;color:#475569;margin-bottom:0.75rem;">Assign Hotels</p>
+                            <select id="corporate-assign-company" style="width:100%;border:1.5px solid #e2e8f0;border-radius:0.5rem;padding:0.6rem 0.75rem;font-size:0.9rem;box-sizing:border-box;">
+                                <option value="">-- Pilih Hotel --</option>
+                            </select>
+                            <button type="button" id="btn-assign-hotel" style="margin-top:0.5rem;background:#3b82f6;color:#fff;border:none;border-radius:0.5rem;padding:0.5rem 1rem;cursor:pointer;font-size:0.85rem;">Assign Hotel</button>
+                            <ul id="assigned-hotels-list" style="margin-top:0.75rem;list-style:none;padding:0;"></ul>
+                        </div>
+                        <div id="corporate-form-error" style="display:none;color:#dc2626;font-size:0.85rem;margin-bottom:0.75rem;"></div>
+                        <button type="submit" id="corporate-submit-btn" style="width:100%;background:#3b82f6;color:#fff;border:none;border-radius:0.75rem;padding:0.75rem;font-weight:700;cursor:pointer;font-size:0.95rem;">Simpan</button>
+                    </form>
+                </div>
+            </div>
+
+            <!-- Konten Billing -->
+            <div id="billing" class="page-content">
+                <div class="tabs" id="billing-tabs">
+                    <button class="tab-item active" data-status="new">New Billing</button>
+                    <button class="tab-item" data-status="paid">Billing Paid</button>
+                </div>
+                <div class="page-header">
+                    <div class="search-container">
+                        <input type="search" id="search-invoice-input" placeholder="Search by company name or invoice ID...">
+                    </div>
+                    <div>
+                        <!-- Add filters here if needed, e.g., by status -->
+                        <button id="add-invoice-btn" class="btn-primary"><i class="fas fa-plus"></i> Add New Invoice</button>
+                    </div>
+                </div>
+                <div class="table-container">
+                    <table id="billing-table">
+                        <thead>
+                            <tr>
+                                <th>Invoice ID</th>
+                                <th>Company</th>
+                                <th>Amount</th>
+                                <th>Due Date</th>
+                                <th>Status</th>
+                                <th>Created At</th>
+                                <th>Actions</th>
+                            </tr>
+                        </thead>
+                        <tbody>
+                            <!-- Data invoices will be populated by JavaScript -->
+                        </tbody>
+                    </table>
+                    <div id="billing-pagination-controls" class="pagination-controls"></div>
+                </div>
+            </div>
+
+            <!-- Konten Settings -->
+            <div id="settings" class="page-content">
+                <div class="dashboard-cards">
+                    <div class="card clickable" data-target="users">
+                        <div class="card-icon"><i class="fas fa-users-cog"></i></div>
+                        <div class="card-info">
+                            <p>User Management</p>
+                            <h3>Manage SaaS Users</h3>
+                        </div>
+                    </div>
+                    <div class="card clickable" data-target="saas-profile">
+                        <div class="card-icon"><i class="fas fa-cogs"></i></div>
+                        <div class="card-info">
+                            <p>SaaS Profile</p>
+                            <h3>Company Information</h3>
+                        </div>
+                    </div>
+                    <div class="card clickable" data-target="invoice-layout">
+                        <div class="card-icon"><i class="fas fa-file-signature"></i></div>
+                        <div class="card-info">
+                            <p>Invoice Layout</p>
+                            <h3>Signature & Footer</h3>
+                        </div>
+                    </div>
+                    <div class="card clickable" data-target="tax-settings">
+                        <div class="card-icon"><i class="fas fa-percentage"></i></div>
+                        <div class="card-info">
+                            <p>Tax Settings</p>
+                            <h3>VAT & PPh 23</h3>
+                        </div>
+                    </div>
+                    <!-- Add other settings cards here -->
+                </div>
+            </div>
+
+            <!-- Konten Users (dalam Settings) -->
+            <div id="users" class="page-content">
+                <div class="page-header">
+                    <div class="search-container">
+                        <input type="search" id="search-saas-user-input" placeholder="Search by username or email...">
+                    </div>
+                    <button id="add-saas-user-btn" class="btn-primary"><i class="fas fa-plus"></i> Add New User</button>
+                </div>
+                <div class="table-container">
+                    <table id="saas-users-table">
+                        <thead>
+                            <tr>
+                                <th>User</th>
+                                <th>Role</th>
+                                <th>Company</th>
+                                <th>Created At</th>
+                                <th>Actions</th>
+                            </tr>
+                        </thead>
+                        <tbody>
+                            <!-- Data user akan diisi oleh JavaScript -->
+                        </tbody>
+                    </table>
+                    <!-- Pagination can be added here if needed -->
+                </div>
+            </div>
+
+            <!-- Konten SaaS Profile (dalam Settings) -->
+            <div id="saas-profile" class="page-content">
+                <form id="saas-profile-form">
+                    <div class="form-group">
+                        <label for="saas-company-name">Company Name</label>
+                        <input type="text" id="saas-company-name" required>
+                    </div>
+                    <div class="form-group">
+                        <label for="saas-company-address">Company Address</label>
+                        <textarea id="saas-company-address" rows="3" required></textarea>
+                    </div>
+                    <div class="form-group">
+                        <label for="saas-support-whatsapp">No Whatsapp (Team Support)</label>
+                        <input type="tel" id="saas-support-whatsapp" placeholder="e.g., 6281234567890">
+                        <p class="form-hint">Enter the support WhatsApp number, including the country code (e.g., 62 for Indonesia).</p>
+                    </div>
+                <div class="form-group">
+                    <label for="saas-npwp">NPWP Number</label>
+                    <input type="text" id="saas-npwp" placeholder="e.g., 01.234.567.8-901.000">
+                </div>
+                <div class="form-group">
+                    <label for="saas-bank-account">Bank Account Details</label>
+                    <input type="text" id="saas-bank-account" placeholder="e.g., BCA - 1234567890 a/n SaaS Corp.">
+                </div>
+                    <div class="form-group">
+                        <label for="saas-company-logo-upload">Company Logo</label>
+                        <div class="flex items-center space-x-4">
+                            <img id="saas-company-logo-preview" src="https://placehold.co/100x100/e2e8f0/cbd5e1?text=Logo" alt="Company Logo Preview" class="w-24 h-24 object-contain rounded-md border border-slate-200 bg-slate-50">
+                            <input type="file" id="saas-company-logo-upload" accept="image/png, image/jpeg, image/svg+xml">
+                        </div>
+                        <p class="form-hint">Recommended: PNG with transparent background, max 2MB.</p>
+                    </div>
+                    <button type="submit" class="btn-primary">Save Settings</button>
+                </form>
+            </div>
+
+            <!-- Konten Invoice Layout (dalam Settings) -->
+            <div id="invoice-layout" class="page-content">
+                <form id="invoice-layout-form">
+                    <div class="form-group">
+                        <label for="saas-invoice-signature-text">Signature Text</label>
+                        <input type="text" id="saas-invoice-signature-text" placeholder="e.g., Hormat kami,">
+                        <p class="form-hint">Text that appears above the signature line. Leave blank to hide.</p>
+                    </div>
+                    <div class="form-group">
+                        <label for="saas-invoice-signature-name">Signature Name / Title</label>
+                        <input type="text" id="saas-invoice-signature-name" placeholder="e.g., Finance Manager">
+                        <p class="form-hint">Name/title that appears below the signature line.</p>
+                    </div>
+                    <div class="form-group">
+                        <label for="saas-invoice-footer-text">Footer Text</label>
+                        <textarea id="saas-invoice-footer-text" rows="3" placeholder="e.g., Thank you for your business! If you have any questions, please contact us."></textarea>
+                        <p class="form-hint">Text that appears at the very bottom of the invoice.</p>
+                    </div>
+                    <button type="submit" class="btn-primary">Save Layout Settings</button>
+                </form>
+            </div>
+
+            <!-- Konten Tax Settings (dalam Settings) -->
+            <div id="tax-settings" class="page-content">
+                <form id="tax-settings-form">
+                    <div class="form-group">
+                        <label for="saas-tax-ppn-rate">PPN / VAT Rate (%)</label>
+                        <input type="number" id="saas-tax-ppn-rate" step="0.01" min="0" placeholder="e.g., 11">
+                        <p class="form-hint">Enter the Value Added Tax rate. Example: 11 for 11%.</p>
+                    </div>
+                    <div class="form-group">
+                        <label for="saas-tax-pph23-rate">PPh 23 Rate (%)</label>
+                        <input type="number" id="saas-tax-pph23-rate" step="0.01" min="0" placeholder="e.g., 2">
+                        <p class="form-hint">Enter the PPh 23 withholding tax rate. Example: 2 for 2%.</p>
+                    </div>
+                    <button type="submit" class="btn-primary">Save Tax Settings</button>
+                </form>
+            </div>
+        </main>
+    </div>
+    <div class="content-overlay"></div>
+
+    <!-- Modal untuk Menambah Perusahaan Baru -->
+    <div id="add-company-modal" class="modal">
+        <div class="modal-content">
+            <span id="close-add-modal-btn" class="close-btn">&times;</span>
+            <h2>Add New Company</h2>
+            <form id="add-company-form">
+                <div class="form-group">
+                    <label for="companyName">Company Name</label>
+                    <input type="text" id="companyName" required>
+                </div>
+                <div class="form-group">
+                    <label for="companyAddress">Company Address</label>
+                    <textarea id="companyAddress" rows="3" required></textarea>
+                </div>
+                <div class="form-group">
+                    <label for="companyWhatsapp">No Whatsapp</label>
+                    <input type="tel" id="companyWhatsapp" placeholder="e.g., 081234567890">
+                </div>
+                <div class="form-group">
+                    <label for="subscriptionStartDate">Subscription Start Date</label>
+                    <input type="date" id="subscriptionStartDate" required>
+                </div>
+                <div class="form-group">
+                    <label for="subscriptionEndDate">Subscription End Date</label>
+                    <input type="date" id="subscriptionEndDate" required>
+                </div>
+                <div class="form-group">
+                    <label for="pricePerEmployee">Price per Employee (IDR)</label>
+                    <input type="number" id="pricePerEmployee" name="pricePerEmployee" placeholder="e.g., 19000" value="19000" required>
+                </div>
+                <div class="form-group">
+                    <label for="maxEmployees">Max Employees</label>
+                    <input type="number" id="maxEmployees" name="maxEmployees" placeholder="e.g., 50" value="10" required>
+                </div>
+                <div class="form-group">
+                    <label>Office Location (Click map to set)</label>
+                    <div id="add-company-map" style="height: 250px; width: 100%; border-radius: 5px; border: 1px solid var(--border-color); margin-bottom: 10px; z-index: 1;"></div>
+                </div>
+                <div class="form-group">
+                    <label for="officeLatitude">Office Latitude</label>
+                    <input type="number" id="officeLatitude" step="any">
+                </div>
+                <div class="form-group">
+                    <label for="officeLongitude">Office Longitude</label>
+                    <input type="number" id="officeLongitude" step="any">
+                </div>
+                <div class="form-group">
+                    <label for="officeRadius">Office Radius (meters)</label>
+                    <input type="number" id="officeRadius">
+                </div>
+                <div class="form-group">
+                    <label for="adminUsername">Admin Username</label>
+                    <input type="text" id="adminUsername" required>
+                </div>
+                <div class="form-group">
+                    <label for="adminEmail">Admin Email</label>
+                    <input type="email" id="adminEmail" required>
+                </div>
+                <div class="form-group">
+                    <label for="adminPassword">Admin Password</label>
+                    <input type="password" id="adminPassword" required minlength="6">
+                </div>
+                <button type="submit" class="btn-primary">Create Company & Admin</button>
+            </form>
+        </div>
+    </div>
+
+    <!-- Modal untuk Mengedit Perusahaan -->
+    <div id="edit-company-modal" class="modal">
+        <div class="modal-content">
+            <span id="close-edit-modal-btn" class="close-btn">&times;</span>
+            <h2>Edit Company</h2>
+            <form id="edit-company-form">
+                <input type="hidden" id="editCompanyId">
+                <input type="hidden" id="editAdminId">
+                <div class="form-group">
+                    <label for="editCompanyName">Company Name</label>
+                    <input type="text" id="editCompanyName" required>
+                </div>
+                <div class="form-group">
+                    <label for="editCompanyAddress">Company Address</label>
+                    <textarea id="editCompanyAddress" rows="3" required></textarea>
+                </div>
+                <div class="form-group">
+                    <label for="editCompanyWhatsapp">No Whatsapp</label>
+                    <input type="tel" id="editCompanyWhatsapp" placeholder="e.g., 081234567890">
+                </div>
+                <div class="form-group">
+                    <label for="editSubscriptionStartDate">Subscription Start Date</label>
+                    <input type="date" id="editSubscriptionStartDate" required>
+                </div>
+                <div class="form-group">
+                    <label for="editSubscriptionEndDate">Subscription End Date</label>
+                    <input type="date" id="editSubscriptionEndDate" required>
+                </div>
+                <div class="form-group">
+                    <label for="editPricePerEmployee">Price per Employee (IDR)</label>
+                    <input type="number" id="editPricePerEmployee" name="editPricePerEmployee" placeholder="e.g., 19000" required>
+                </div>
+                <div class="form-group">
+                    <label for="editMaxEmployees">Max Employees</label>
+                    <input type="number" id="editMaxEmployees" name="editMaxEmployees" placeholder="e.g., 50" required>
+                </div>
+                <div class="form-group">
+                    <label>Office Location (Click map to set)</label>
+                    <div id="edit-company-map" style="height: 250px; width: 100%; border-radius: 5px; border: 1px solid var(--border-color); margin-bottom: 10px; z-index: 1;"></div>
+                </div>
+                <div class="form-group">
+                    <label for="editOfficeLatitude">Office Latitude</label>
+                    <input type="number" id="editOfficeLatitude" step="any">
+                </div>
+                <div class="form-group">
+                    <label for="editOfficeLongitude">Office Longitude</label>
+                    <input type="number" id="editOfficeLongitude" step="any">
+                </div>
+                <div class="form-group">
+                    <label for="editOfficeRadius">Office Radius (meters)</label>
+                    <input type="number" id="editOfficeRadius">
+                </div>
+                <div class="form-group">
+                    <label for="editAdminUsername">Admin Username</label>
+                    <input type="text" id="editAdminUsername" required>
+                </div>
+                <div class="form-group">
+                    <label for="editAdminEmail">Admin Email</label>
+                    <input type="email" id="editAdminEmail" required>
+                </div>
+                <div class="form-group">
+                    <label for="editAdminPassword">New Admin Password</label>
+                    <input type="password" id="editAdminPassword" minlength="6" placeholder="Leave blank to keep current password">
+                </div>
+                <button type="submit" class="btn-primary">Save Changes</button>
+            </form>
+        </div>
+    </div>
+
+    <!-- Modal untuk Menambah/Mengedit SaaS User -->
+    <div id="saas-user-modal" class="modal">
+        <div class="modal-content">
+            <span id="close-saas-user-modal-btn" class="close-btn">&times;</span>
+            <h2>Add New SaaS User</h2>
+            <form id="saas-user-form">
+                <input type="hidden" id="saas-user-id">
+                <div class="form-group">
+                    <label for="saas-username">Username</label>
+                    <input type="text" id="saas-username" required>
+                </div>
+                <div class="form-group">
+                    <label for="saas-email">Email</label>
+                    <input type="email" id="saas-email" required>
+                </div>
+                <div class="form-group">
+                    <label for="saas-password">Password</label>
+                    <input type="password" id="saas-password" minlength="6" placeholder="Enter password">
+                </div>
+                <div class="form-group">
+                    <label for="saas-role">Role</label>
+                    <select id="saas-role" required>
+                        <option value="admin">Admin</option>
+                        <option value="superadmin">Super Admin</option>
+                    </select>
+                </div>
+                <div class="form-group" id="saas-company-group" style="display: none;">
+                    <label for="saas-company">Company</label>
+                    <select id="saas-company">
+                        <!-- Options will be populated by JS -->
+                    </select>
+                </div>
+                <button type="submit" class="btn-primary">Save User</button>
+            </form>
+        </div>
+    </div>
+
+    <!-- Modal untuk Melihat Invoice -->
+    <div id="view-invoice-modal" class="modal">
+        <div class="modal-content" style="max-width: 800px; width: 90%;">
+            <span id="close-invoice-modal-btn" class="close-btn">&times;</span>
+            <div id="invoice-content" class="invoice-container">
+                <!-- Invoice content will be populated by JS -->
+                <div class="text-center py-10">Loading invoice...</div>
+            </div>
+            <div class="invoice-actions">
+                <button id="btn-print-invoice" class="btn-secondary"><i class="fas fa-print"></i> Print</button>
+            </div>
+        </div>
+    </div>
+
+    <!-- Modal untuk Menambah/Mengedit Invoice -->
+    <div id="add-invoice-modal" class="modal">
+        <div class="modal-content">
+            <span id="close-add-invoice-modal-btn" class="close-btn">&times;</span>
+            <h2 id="invoice-modal-title">Add New Invoice</h2>
+            <form id="add-invoice-form">
+                <input type="hidden" id="invoice-id-input">
+                <div class="form-group">
+                    <label for="invoice-company-id">Company</label>
+                    <div class="searchable-select-container">
+                        <input type="text" id="invoice-company-search" placeholder="Type to search for a company..." autocomplete="off" required>
+                        <input type="hidden" id="invoice-company-id">
+                        <div id="invoice-company-results" class="searchable-select-results"></div>
+                    </div>
+                </div>
+                <div class="form-group">
+                    <label for="invoice-description">Description</label>
+                    <textarea id="invoice-description" rows="3" required placeholder="e.g., SaaS Subscription for May 2024"></textarea>
+                </div>
+                <div class="form-grid">
+                    <div class="form-group">
+                        <label for="invoice-quantity">Quantity</label>
+                        <input type="number" id="invoice-quantity" required min="1" value="1">
+                    </div>
+                    <div class="form-group">
+                        <label for="invoice-unit-price">Unit Price (IDR)</label>
+                        <input type="number" id="invoice-unit-price" required min="0" placeholder="e.g., 190000">
+                    </div>
+                </div>
+                <div class="invoice-form-summary">
+                    <div class="summary-row">
+                        <span>Subtotal</span>
+                        <span id="invoice-form-subtotal-amount">Rp 0</span>
+                    </div>
+                    <div class="summary-row">
+                        <span>PPN (<span id="invoice-form-ppn-rate">0</span>%)</span>
+                        <span id="invoice-form-ppn-amount">Rp 0</span>
+                    </div>
+                    <div class="summary-row" style="font-size: 0.8rem; color: #64748b;">
+                        <span>PPh 23 (<span id="invoice-form-pph23-rate">0</span>%)</span>
+                        <span id="invoice-form-pph23-amount">(Rp 0)</span>
+                    </div>
+                    <div class="summary-row" style="border-top: 1px solid #e2e8f0; padding-top: 8px; margin-top: 8px;">
+                        <strong style="font-size: 1rem;">Total</strong>
+                        <strong id="invoice-form-total-amount" style="font-size: 1rem;">Rp 0</strong>
+                    </div>
+                    <!-- Hidden input to store calculated subtotal for the form logic -->
+                    <input type="hidden" id="invoice-amount" value="0">
+                </div>
+                <div class="form-group">
+                    <label for="invoice-due-date">Due Date</label>
+                    <input type="date" id="invoice-due-date" required>
+                </div>
+                <div class="form-group">
+                    <label for="invoice-status">Status</label>
+                    <select id="invoice-status" required>
+                        <option value="draft">Draft</option>
+                        <option value="due" selected>Due</option>
+                        <option value="paid">Paid</option>
+                        <option value="overdue">Overdue</option>
+                    </select>
+                </div>
+                <button type="submit" id="invoice-form-submit-btn" class="btn-primary">Create Invoice</button>
+            </form>
+        </div>
+    </div>
+
+    <!-- Modal untuk Mark as Paid -->
+    <div id="mark-as-paid-modal" class="modal">
+        <div class="modal-content">
+            <span id="close-mark-as-paid-modal-btn" class="close-btn">&times;</span>
+            <h2>Mark Invoice as Paid</h2>
+            <form id="mark-as-paid-form">
+                <input type="hidden" id="mark-as-paid-invoice-id">
+                <div class="form-group">
+                    <label for="payment-date">Payment Date</label>
+                    <input type="date" id="payment-date" required>
+                </div>
+                <div class="form-group">
+                    <label for="payment-notes">Notes (Optional)</label>
+                    <textarea id="payment-notes" rows="3" placeholder="e.g., Bank transfer received, Ref: 12345"></textarea>
+                </div>
+                <button type="submit" class="btn-primary">Confirm Payment</button>
+            </form>
+        </div>
+    </div>
+
+    <script type="module" src="js/saas-admin.js"></script>
+</body>
+</html>
